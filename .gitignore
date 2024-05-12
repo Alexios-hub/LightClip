@@ -3,4 +3,4 @@ CLIP-KD/logs/
 CLIP-KD/.vscode/
 datasets/
 CLIP-KD/datasets/
-
+ml-mobileclip/checkpoints/
