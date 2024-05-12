@@ -193,6 +193,7 @@ class TextTransformer(nn.Module):
         """
         # Discrete tokens to continuous embeddings
         # [batch_size, context_length] --> [batch_size, context_length, hidden_dim]
+
         token_emb = self.forward_embedding(text_tokens)
 
         # [1, context_length, context_length]
@@ -243,3 +244,6 @@ class TextTransformer(nn.Module):
             **kwargs
         )
         return text_tokens
+
+    def get_cast_dtype(self) -> torch.dtype:
+        return self.transformer[0].convffn.conv.conv.weight.dtype
