@@ -1,0 +1,5 @@
+2024-05-09,19:42:23 | INFO | Added key: store_based_barrier_key:1 to store for rank: 0
+2024-05-09,19:42:23 | INFO | Rank 0: Completed store-based barrier for key:store_based_barrier_key:1 with 2 nodes.
+2024-05-09,19:42:23 | INFO | Running in distributed mode with multiple processes. Device: cuda:0.Process (global: 0, local 0), total 2.
+2024-05-09,19:42:23 | INFO | Loaded RN50 model config.
+2024-05-09,19:42:28 | INFO | Loaded RN50 model config.
