@@ -168,8 +168,8 @@ def main(args):
             del model.transformer
             model.transformer = mobile_model.text_encoder.to(device)
             model.use_mobile_clip = True
-            preprocess_train = preprocess
-            preprocess_val = preprocess
+            preprocess_train = image_transform(256,is_train=True, mean=[0.48145466,0.4578275,0.40821073], std=[0.26862954,0.26130258,0.27577711])
+            preprocess_val = image_transform(256,is_train=False, mean=[0.48145466,0.4578275,0.40821073], std=[0.26862954,0.26130258,0.27577711])
         else:
             raise KeyError(f'{args.light_version} not supported.')
         
@@ -221,8 +221,10 @@ def main(args):
     for t_n, t_p in t_model.named_parameters():
         t_p.requires_grad = False
     checkpoint = torch.load(args.t_model_checkpoint, map_location='cpu')
-    # sd = checkpoint
-    sd = checkpoint["state_dict"]
+    if "state_dict" in checkpoint.keys():
+        sd = checkpoint["state_dict"]
+    else:
+        sd = checkpoint
     if next(iter(sd.items()))[0].startswith('module'):
         sd = {k[len('module.'):]: v for k, v in sd.items()}
     t_model.load_state_dict(sd)

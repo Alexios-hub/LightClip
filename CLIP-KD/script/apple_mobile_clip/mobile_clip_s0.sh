@@ -19,8 +19,8 @@ torchrun --nproc_per_node 1 -m \
     --epochs 32 \
     --workers=8 \
     --model timm-swin_tiny_patch4_window7_224 \
-    --t-model ViT-B-16 \
-    --t-model-checkpoint /home/alex/data/LightClip/CLIP-KD/pretrained_models/ViT_B_16_cc3m_12m_ep32.pt \
+    --t-model ViT-B-32-256 \
+    --t-model-checkpoint /home/alex/LightClip/CLIP-KD/pretrained_models/ViT-B-32/open_clip_pytorch_model.bin \
     --logs /home/alex/data/LightClip/CLIP-KD/logs \
     --alpha_ckd_loss 1. \
     --alpha_icl_loss 1. \
