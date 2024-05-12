@@ -2,4 +2,5 @@ CLIP-KD/pretrained_models/
 CLIP-KD/logs/
 CLIP-KD/.vscode/
 datasets/
+CLIP-KD/datasets/
 
