@@ -27,3 +27,4 @@ torchrun --nproc_per_node 2 -m \
     --alpha_fd_loss 2000. \
     --tag distill-new \
     # --light
+    # --light_version "light_swin_tiny"

@@ -12,7 +12,7 @@ from torch.cuda.amp import GradScaler
 from open_clip import ClipLoss, get_cast_dtype
 from open_clip import KDClipLoss
 from open_clip.factory import get_model_config
-
+from open_clip.transform import image_transform
 try:
     import wandb
 except ImportError:
@@ -38,6 +38,10 @@ from training.scheduler import cosine_lr
 from training.train import train_kd_one_epoch, evaluate
 from training.light_swin import _create_lightweight_swin_transformer
 from training.light_transformer import LightTransformer
+import mobileclip
+from PIL import Image
+import copy
+
 
 
 def random_seed(seed=42, rank=0):
@@ -148,13 +152,26 @@ def main(args):
 
     if args.light:
         print('lightweight')
-        del model.visual
-        model_cfg = get_model_config(args.model)
-        model.visual = _create_lightweight_swin_transformer(variant='light_swin_tiny_patch4_window7_224').to(device=device)
-        model.visual.head = torch.nn.Linear(768,model_cfg["embed_dim"]).to(device=device)
+        print('use model:{args.light_version}')
+        if args.light_version == "light_swin_tiny":
+            del model.visual
+            model_cfg = get_model_config(args.model)
+            model.visual = _create_lightweight_swin_transformer(variant='light_swin_tiny_patch4_window7_224').to(device=device)
+            model.visual.head = torch.nn.Linear(768,model_cfg["embed_dim"]).to(device=device)
 
-        del model.transformer
-        model.transformer = LightTransformer(width=model_cfg["text_cfg"]["width"],layers=model_cfg["text_cfg"]["layers"],heads=model_cfg["text_cfg"]["heads"]).to(device=device)
+            del model.transformer
+            model.transformer = LightTransformer(width=model_cfg["text_cfg"]["width"],layers=model_cfg["text_cfg"]["layers"],heads=model_cfg["text_cfg"]["heads"]).to(device=device)
+        elif args.light_version == "light_mobileclip_s0":
+            mobile_model, _, preprocess = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            del model.visual
+            model.visual = mobile_model.image_encoder.to(device)
+            del model.transformer
+            model.transformer = mobile_model.text_encoder.to(device)
+            model.use_mobile_clip = True
+            preprocess_train = preprocess
+            preprocess_val = preprocess
+        else:
+            raise KeyError(f'{args.light_version} not supported.')
         
     logging.info(f'model:{model}')
     random_seed(args.seed, args.rank)

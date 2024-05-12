@@ -417,6 +417,12 @@ def parse_args(args):
         action="store_true",
         help="use lightweight swin transformer and lightweight text transformer"
     )
+    
+    parser.add_argument(
+        "--light_version",
+        default="light_mobileclip_s0",
+        help="choose light model"
+    )
 
 
     args = parser.parse_args(args)

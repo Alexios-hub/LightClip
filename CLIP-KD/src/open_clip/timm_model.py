@@ -39,6 +39,7 @@ class TimmModel(nn.Module):
             raise RuntimeError("Please `pip install timm` to use timm models.")
 
         self.image_size = to_2tuple(image_size)
+        print(f'model_name:{model_name}')
         self.trunk = timm.create_model(model_name, pretrained=pretrained)
         feat_size = self.trunk.default_cfg.get('pool_size', None)
         feature_ndim = 1 if not feat_size else 2
