@@ -157,6 +157,7 @@ def _build_text_tower(
     return text
 
 
+
 class CLIP(nn.Module):
     def __init__(
             self,
@@ -167,6 +168,13 @@ class CLIP(nn.Module):
             cast_dtype: Optional[torch.dtype] = None,
     ):
         super().__init__()
+        self.init_params = {
+            "embed_dim":embed_dim,
+            "vision_cfg":vision_cfg,
+            "text_cfg":text_cfg,
+            "quick_gelu":quick_gelu,
+            "cast_dtype":cast_dtype
+        }
         self.visual = _build_vision_tower(embed_dim, vision_cfg, quick_gelu, cast_dtype)
 
         text = _build_text_tower(embed_dim, text_cfg, quick_gelu, cast_dtype)
@@ -179,8 +187,6 @@ class CLIP(nn.Module):
         self.register_buffer('attn_mask', text.attn_mask, persistent=False)
 
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
-
-        self.use_mobile_clip = False
 
     def lock_image_tower(self, unlocked_groups=0, freeze_bn_stats=False):
         # lock image tower as per LiT - https://arxiv.org/abs/2111.07991
@@ -201,18 +207,15 @@ class CLIP(nn.Module):
     def encode_text(self, text, normalize: bool = False):
         cast_dtype = self.transformer.get_cast_dtype()
 
-        if self.use_mobile_clip == False:
-            x = self.token_embedding(text).to(cast_dtype)  # [batch_size, n_ctx, d_model]
+        x = self.token_embedding(text).to(cast_dtype)  # [batch_size, n_ctx, d_model]
 
-            x = x + self.positional_embedding.to(cast_dtype)
-            x = x.permute(1, 0, 2)  # NLD -> LND
-            x = self.transformer(x, attn_mask=self.attn_mask)
-            x = x.permute(1, 0, 2)  # LND -> NLD
-            x = self.ln_final(x)  # [batch_size, n_ctx, transformer.width]
-            # take features from the eot embedding (eot_token is the highest number in each sequence)
-            x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
-        else:
-            x = self.transformer(text, attn_mask=self.attn_mask)
+        x = x + self.positional_embedding.to(cast_dtype)
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        x = self.transformer(x, attn_mask=self.attn_mask)
+        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = self.ln_final(x)  # [batch_size, n_ctx, transformer.width]
+        # take features from the eot embedding (eot_token is the highest number in each sequence)
+        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
         return F.normalize(x, dim=-1) if normalize else x
 
     def forward(self, image, text, distill=False, mask_ratio=0.):
@@ -222,6 +225,32 @@ class CLIP(nn.Module):
         image_features = self.encode_image(image, normalize=flag, mask_ratio=mask_ratio)
         text_features = self.encode_text(text, normalize=flag)
         return image_features, text_features, self.logit_scale.exp()
+
+class AppleMobileCLIP(CLIP):
+    def __init__(
+            self,
+            embed_dim: int,
+            vision_cfg: CLIPVisionCfg,
+            text_cfg: CLIPTextCfg,
+            quick_gelu: bool = False,
+            cast_dtype: Optional[torch.dtype] = None,
+    ):
+        super(AppleMobileCLIP,self).__init__(
+            embed_dim=embed_dim,
+            vision_cfg=vision_cfg,
+            text_cfg=text_cfg,
+            quick_gelu=quick_gelu,
+            cast_dtype=cast_dtype
+        )
+        del self.positional_embedding
+        del self.ln_final
+        del self.text_projection
+        del self.token_embedding
+    def encode_text(self, text, normalize: bool = False):
+        x = self.transformer(text, attn_mask=self.attn_mask)
+        return F.normalize(x, dim=-1) if normalize else x
+    
+
 
 
 class CustomTextCLIP(nn.Module):

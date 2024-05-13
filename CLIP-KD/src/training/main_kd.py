@@ -30,6 +30,7 @@ except ImportError:
 
 from open_clip import create_kd_model_and_transforms
 from open_clip import trace_model, get_tokenizer
+from open_clip import AppleMobileCLIP
 from training.data import get_data
 from training.distributed import is_master, init_distributed_device, world_info_from_env
 from training.logger import setup_logging
@@ -39,8 +40,7 @@ from training.train import train_kd_one_epoch, evaluate
 from training.light_swin import _create_lightweight_swin_transformer
 from training.light_transformer import LightTransformer
 import mobileclip
-from PIL import Image
-import copy
+from mobileclip.models.mci import ParallelAttentionBlock
 
 
 
@@ -49,6 +49,18 @@ def random_seed(seed=42, rank=0):
     np.random.seed(seed + rank)
     random.seed(seed + rank)
 
+
+def analyze_model_components(model):
+    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Total trainable parameters: {total_params}")
+
+    # 遍历顶层子模块
+    for name, module in model.named_children():
+        module_params = sum(p.numel() for p in module.parameters() if p.requires_grad)
+        if module_params > 0:
+            # 计算该子模块的参数占总参数的百分比
+            percentage = 100.0 * module_params / total_params
+            print(f"{name}: {module_params} parameters, {percentage:.2f}% of total")
 
 def main(args):
     args = parse_args(args)
@@ -161,19 +173,33 @@ def main(args):
 
             del model.transformer
             model.transformer = LightTransformer(width=model_cfg["text_cfg"]["width"],layers=model_cfg["text_cfg"]["layers"],heads=model_cfg["text_cfg"]["heads"]).to(device=device)
-        elif args.light_version == "light_mobileclip_s0":
-            mobile_model, _, preprocess = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+        elif args.light_version == "mobileclip_s0":
+            mobile_model, _, preprocess = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            model = AppleMobileCLIP(**(model.init_params)).to(device)
             del model.visual
             model.visual = mobile_model.image_encoder.to(device)
             del model.transformer
             model.transformer = mobile_model.text_encoder.to(device)
-            model.use_mobile_clip = True
+            preprocess_train = image_transform(256,is_train=True, mean=[0.48145466,0.4578275,0.40821073], std=[0.26862954,0.26130258,0.27577711])
+            preprocess_val = image_transform(256,is_train=False, mean=[0.48145466,0.4578275,0.40821073], std=[0.26862954,0.26130258,0.27577711])
+        elif args.light_version == "light_mobileclip_s0":
+            mobile_model, _, preprocess = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            model = AppleMobileCLIP(**(model.init_params)).to(device)
+            del model.visual
+            model.visual = mobile_model.image_encoder.to(device)
+            
+            model.visual.model.network[7][0] = ParallelAttentionBlock(**model.visual.model.network[7][0].init_params).to(device)
+            model.visual.model.network[7][1] = model.visual.model.network[7][0]
+            analyze_model_components(model.visual.model.network)
+
+            del model.transformer
+            model.transformer = mobile_model.text_encoder.to(device)
             preprocess_train = image_transform(256,is_train=True, mean=[0.48145466,0.4578275,0.40821073], std=[0.26862954,0.26130258,0.27577711])
             preprocess_val = image_transform(256,is_train=False, mean=[0.48145466,0.4578275,0.40821073], std=[0.26862954,0.26130258,0.27577711])
         else:
             raise KeyError(f'{args.light_version} not supported.')
         
-    logging.info(f'model:{model}')
+    # logging.info(f'model:{model}')
     random_seed(args.seed, args.rank)
 
     if args.trace:

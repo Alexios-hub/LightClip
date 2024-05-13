@@ -12,11 +12,11 @@ torchrun --nproc_per_node 2 -m \
     --csv-img-key filepath \
     --csv-caption-key title \
     --imagenet-val=/home/alex/data/LightClip/datasets/val_images/ \
-    --warmup 10000 \
+    --warmup 2500 \
     --batch-size=64 \
-    --lr=1e-3 \
+    --lr=0.0005 \
     --wd=0.1 \
-    --epochs 32 \
+    --epochs 16 \
     --workers=8 \
     --model timm-swin_tiny_patch4_window7_224 \
     --t-model ViT-B-32-256 \
@@ -27,4 +27,4 @@ torchrun --nproc_per_node 2 -m \
     --alpha_fd_loss 2000. \
     --tag distill-new \
     --light \
-    --light_version mobileclip_s0
+    --light_version light_mobileclip_s0

@@ -150,6 +150,65 @@ class MHSA(nn.Module):
 
         return x
 
+class ShapedMHSA(nn.Module):
+    """Shaped Multi-headed Self Attention module.
+
+    Source modified from:
+    https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        head_dim: int = 32,
+        qkv_bias: bool = False,
+        attn_drop: float = 0.0,
+        proj_drop: float = 0.0,
+    ) -> None:
+        """Build MHSA module that can handle 3D or 4D input tensors.
+
+        Args:
+            dim: Number of embedding dimensions.
+            head_dim: Number of hidden dimensions per head. Default: ``32``
+            qkv_bias: Use bias or not. Default: ``False``
+            attn_drop: Dropout rate for attention tensor.
+            proj_drop: Dropout rate for projection tensor.
+        """
+        super().__init__()
+        assert dim % head_dim == 0, "dim should be divisible by head_dim"
+        self.head_dim = head_dim
+        self.num_heads = dim // head_dim
+        self.scale = head_dim**-0.5
+
+        self.qk = nn.Linear(dim, dim * 2, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        shape = x.shape
+        B, C, H, W = shape
+        N = H * W
+        if len(shape) == 4:
+            x = torch.flatten(x, start_dim=2).transpose(-2, -1)  # (B, N, C)
+        qk = (
+            self.qk(x)
+            .reshape(B, N, 2, self.num_heads, self.head_dim)
+            .permute(2, 0, 3, 1, 4)
+        )
+        q, k = qk.unbind(0)  # make torchscript happy (cannot use tensor as tuple)
+        v = x.reshape(B, N, 1, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4).squeeze()
+
+        # trick here to make q@k.t more stable
+        attn = (q * self.scale) @ k.transpose(-2, -1)
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+
+        if len(shape) == 4:
+            x = x.transpose(-2, -1).reshape(B, C, H, W)
+
+        return x
+
 
 class PatchEmbed(nn.Module):
     """Convolutional patch embedding layer."""
@@ -605,6 +664,16 @@ class AttentionBlock(nn.Module):
         """
 
         super().__init__()
+        self.init_params = {
+            "dim":dim,
+            "mlp_ratio":mlp_ratio,
+            "act_layer":act_layer,
+            "norm_layer":norm_layer,
+            "drop":drop,
+            "drop_path":drop_path,
+            "use_layer_scale":use_layer_scale,
+            "layer_scale_init_value":layer_scale_init_value
+        }
 
         self.norm = norm_layer(dim)
         self.token_mixer = MHSA(dim=dim)
@@ -640,6 +709,76 @@ class AttentionBlock(nn.Module):
         else:
             x = x + self.drop_path(self.token_mixer(self.norm(x)))
             x = x + self.drop_path(self.convffn(x))
+        return x
+
+class ParallelAttentionBlock(nn.Module):
+    """Implementation of metaformer block with MHSA as token mixer.
+
+    For more details on Metaformer structure, please refer to:
+    `MetaFormer Is Actually What You Need for Vision <https://arxiv.org/pdf/2111.11418.pdf>`_
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        mlp_ratio: float = 4.0,
+        act_layer: nn.Module = nn.GELU,
+        norm_layer: nn.Module = nn.BatchNorm2d,
+        drop: float = 0.0,
+        drop_path: float = 0.0,
+        use_layer_scale: bool = True,
+        layer_scale_init_value: float = 1e-5,
+    ):
+        """Build Attention Block.
+
+        Args:
+            dim: Number of embedding dimensions.
+            mlp_ratio: MLP expansion ratio. Default: 4.0
+            act_layer: Activation layer. Default: ``nn.GELU``
+            norm_layer: Normalization layer. Default: ``nn.BatchNorm2d``
+            drop: Dropout rate. Default: 0.0
+            drop_path: Drop path rate. Default: 0.0
+            use_layer_scale: Flag to turn on layer scale. Default: ``True``
+            layer_scale_init_value: Layer scale value at initialization. Default: 1e-5
+        """
+
+        super().__init__()
+
+        self.norm = norm_layer(dim)
+        self.token_mixer = ShapedMHSA(dim=dim)
+
+        assert mlp_ratio > 0, "MLP ratio should be greater than 0, found: {}".format(
+            mlp_ratio
+        )
+        mlp_hidden_dim = int(dim * mlp_ratio)
+        self.convffn = ConvFFN(
+            in_channels=dim,
+            hidden_channels=mlp_hidden_dim,
+            act_layer=act_layer,
+            drop=drop,
+        )
+
+        # Layer Scale
+        self.use_layer_scale = use_layer_scale
+        if use_layer_scale:
+            self.layer_scale_1 = nn.Parameter(
+                layer_scale_init_value * torch.ones((dim, 1, 1)), requires_grad=True
+            )
+            self.layer_scale_2 = nn.Parameter(
+                layer_scale_init_value * torch.ones((dim, 1, 1)), requires_grad=True
+            )
+
+    def forward(self, x):
+        if self.use_layer_scale:
+            x_norm = self.norm(x)
+            x_att = self.layer_scale_1 * self.token_mixer(x_norm)
+            x_mlp = self.layer_scale_2 * self.convffn(x_norm)
+            x = x_att + x_mlp
+        else:
+            x_norm = self.norm(x)
+            x_att = self.token_mixer(x_norm)
+            x_mlp = self.convffn(x)
+            x = x_att + x_mlp
         return x
 
 
