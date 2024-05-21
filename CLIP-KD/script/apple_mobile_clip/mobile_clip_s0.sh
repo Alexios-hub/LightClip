@@ -1,6 +1,6 @@
 cd src
 torchrun --nproc_per_node 2 -m \
-    --master_addr=127.0.0.2 --master_port=29535 \
+    --master_addr=127.0.0.2 --master_port=29538 \
     training.main_kd \
     --save-frequency 1 \
     --zeroshot-frequency 1 \
@@ -13,7 +13,7 @@ torchrun --nproc_per_node 2 -m \
     --csv-caption-key title \
     --imagenet-val=/home/alex/data/LightClip/datasets/val_images/ \
     --warmup 10000 \
-    --batch-size=64 \
+    --batch-size=512 \
     --lr=1e-3 \
     --wd=0.1 \
     --epochs 32 \

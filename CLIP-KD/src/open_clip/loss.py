@@ -271,6 +271,14 @@ class KDClipLoss(nn.Module):
                 logits_per_image = logit_scale * normalized_all_image_features @ normalized_all_text_features.T
                 logits_per_text = logits_per_image.T
         else:
+            all_image_features = image_features
+            all_text_features = text_features
+            t_all_image_features = t_image_features
+            t_all_text_features = t_text_features
+
+            t_logits_per_image = t_logit_scale * t_all_image_features @ t_all_text_features.T
+            t_logits_per_text = t_logits_per_image.T
+
             normalized_image_features = F.normalize(image_features,dim=-1)
             normalized_text_features = F.normalize(text_features,dim=-1)
             logits_per_image = logit_scale * normalized_image_features @ normalized_text_features.T

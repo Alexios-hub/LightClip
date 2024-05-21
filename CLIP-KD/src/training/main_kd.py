@@ -39,8 +39,14 @@ from training.scheduler import cosine_lr
 from training.train import train_kd_one_epoch, evaluate
 from training.light_swin import _create_lightweight_swin_transformer
 from training.light_transformer import LightTransformer
+
+from training.modeling_perceiver_xattn import Perceiver,ParallelPerceiver
+
 import mobileclip
-from mobileclip.models.mci import ParallelAttentionBlock
+from mobileclip.models.mci import ParallelAttentionBlock,AttentionBlock
+
+import copy
+import torchvision.transforms as transforms
 
 
 
@@ -178,28 +184,244 @@ def main(args):
             model = AppleMobileCLIP(**(model.init_params)).to(device)
             del model.visual
             model.visual = mobile_model.image_encoder.to(device)
+            model.visual.model.network[7][0] = AttentionBlock(**model.visual.model.network[7][0].init_params).to(device)
+            model.visual.model.network[7][1] = AttentionBlock(**model.visual.model.network[7][1].init_params).to(device)
             del model.transformer
             model.transformer = mobile_model.text_encoder.to(device)
-            preprocess_train = image_transform(256,is_train=True, mean=[0.48145466,0.4578275,0.40821073], std=[0.26862954,0.26130258,0.27577711])
-            preprocess_val = image_transform(256,is_train=False, mean=[0.48145466,0.4578275,0.40821073], std=[0.26862954,0.26130258,0.27577711])
+            # preprocess_train = image_transform(256,is_train=True, mean=[0.48145466,0.4578275,0.40821073], std=[0.26862954,0.26130258,0.27577711])
+            # preprocess_val = image_transform(256,is_train=False, mean=[0.48145466,0.4578275,0.40821073], std=[0.26862954,0.26130258,0.27577711])
+            preprocess_train = transforms.Compose([
+                transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.CenterCrop(size=(256, 256)),
+                transforms.Lambda(lambda image: image.convert('RGB')),  # Assuming _convert_to_rgb is this
+                transforms.ToTensor()
+                ])
+            preprocess_val = transforms.Compose([
+                transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.CenterCrop(size=(256, 256)),
+                transforms.Lambda(lambda image: image.convert('RGB')),  # Assuming _convert_to_rgb is this
+                transforms.ToTensor()
+                ])
+
+            del mobile_model
+            # Freeze all parameters
+            for param in model.parameters():
+                param.requires_grad = False
+
+            # Unfreeze specific layers
+            for param in model.visual.model.network[7][0].parameters():
+                param.requires_grad = True
+            for param in model.visual.model.network[7][1].parameters():
+                param.requires_grad = True
+
+            t_mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            t_model = AppleMobileCLIP(**(t_model.init_params)).to(device)
+            del t_model.visual
+            t_model.visual = t_mobile_model.image_encoder.to(device)
+
+            del t_model.transformer
+            t_model.transformer = t_mobile_model.text_encoder.to(device)
+            del t_mobile_model
+
+
         elif args.light_version == "light_mobileclip_s0":
-            mobile_model, _, preprocess = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
             model = AppleMobileCLIP(**(model.init_params)).to(device)
             del model.visual
             model.visual = mobile_model.image_encoder.to(device)
             
             model.visual.model.network[7][0] = ParallelAttentionBlock(**model.visual.model.network[7][0].init_params).to(device)
-            model.visual.model.network[7][1] = model.visual.model.network[7][0]
+            # model.visual.model.network[7][1] = model.visual.model.network[7][0]
+            model.visual.model.network[7][1] = ParallelAttentionBlock(**model.visual.model.network[7][1].init_params).to(device)
             analyze_model_components(model.visual.model.network)
 
             del model.transformer
             model.transformer = mobile_model.text_encoder.to(device)
-            preprocess_train = image_transform(256,is_train=True, mean=[0.48145466,0.4578275,0.40821073], std=[0.26862954,0.26130258,0.27577711])
-            preprocess_val = image_transform(256,is_train=False, mean=[0.48145466,0.4578275,0.40821073], std=[0.26862954,0.26130258,0.27577711])
+
+            preprocess_train = transforms.Compose([
+                transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.CenterCrop(size=(256, 256)),
+                transforms.Lambda(lambda image: image.convert('RGB')),  # Assuming _convert_to_rgb is this
+                transforms.ToTensor()
+                ])
+            preprocess_val = transforms.Compose([
+                transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.CenterCrop(size=(256, 256)),
+                transforms.Lambda(lambda image: image.convert('RGB')),  # Assuming _convert_to_rgb is this
+                transforms.ToTensor()
+                ])
+            
+            # Freeze all parameters
+            for param in model.parameters():
+                param.requires_grad = False
+
+            # Unfreeze specific layers
+            for param in model.visual.model.network[7][0].parameters():
+                param.requires_grad = True
+            for param in model.visual.model.network[7][1].parameters():
+                param.requires_grad = True
+
+            del mobile_model
+            t_mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            t_model = AppleMobileCLIP(**(t_model.init_params)).to(device)
+            del t_model.visual
+            t_model.visual = t_mobile_model.image_encoder.to(device)
+
+            del t_model.transformer
+            t_model.transformer = t_mobile_model.text_encoder.to(device)
+
+            del t_mobile_model
+
+
+        elif args.light_version == "ws_light_mobileclip_s0":
+            mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            model = AppleMobileCLIP(**(model.init_params)).to(device)
+            del model.visual
+            model.visual = mobile_model.image_encoder.to(device)
+            
+            model.visual.model.network[7][0] = ParallelAttentionBlock(**model.visual.model.network[7][0].init_params).to(device)
+
+            model.visual.model.network[7][1] = ParallelAttentionBlock(**model.visual.model.network[7][1].init_params).to(device)
+            del model.visual.model.network[7][1].token_mixer
+            model.visual.model.network[7][1].token_mixer = model.visual.model.network[7][0].token_mixer
+
+            analyze_model_components(model.visual.model.network)
+
+            del model.transformer
+            model.transformer = mobile_model.text_encoder.to(device)
+
+            preprocess_train = transforms.Compose([
+                transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.CenterCrop(size=(256, 256)),
+                transforms.Lambda(lambda image: image.convert('RGB')),  # Assuming _convert_to_rgb is this
+                transforms.ToTensor()
+                ])
+            preprocess_val = transforms.Compose([
+                transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.CenterCrop(size=(256, 256)),
+                transforms.Lambda(lambda image: image.convert('RGB')),  # Assuming _convert_to_rgb is this
+                transforms.ToTensor()
+                ])
+            
+            # Freeze all parameters
+            for param in model.parameters():
+                param.requires_grad = False
+
+            # Unfreeze specific layers
+            for param in model.visual.model.network[7][0].parameters():
+                param.requires_grad = True
+            for param in model.visual.model.network[7][1].parameters():
+                param.requires_grad = True
+
+            del mobile_model
+            t_mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            t_model = AppleMobileCLIP(**(t_model.init_params)).to(device)
+            del t_model.visual
+            t_model.visual = t_mobile_model.image_encoder.to(device)
+
+            del t_model.transformer
+            t_model.transformer = t_mobile_model.text_encoder.to(device)
+
+            del t_mobile_model
+
+        elif args.light_version == "perceiver_mobileclip_s0":
+            mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            model = AppleMobileCLIP(**(model.init_params)).to(device)
+            del model.visual
+            model.visual = mobile_model.image_encoder.to(device)
+
+            init_params_0 = model.visual.model.network[7][0].init_params
+            model.visual.model.network[7][0] = Perceiver(dim=init_params_0['dim'],k_v_dim=init_params_0['dim'],depth=1,ff_mult=init_params_0['mlp_ratio']).to(device)
+            del model.visual.model.network[7][1]
+
+            analyze_model_components(model.visual.model.network)
+
+            del model.transformer
+            model.transformer = mobile_model.text_encoder.to(device)
+
+            preprocess_train = transforms.Compose([
+                transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.CenterCrop(size=(256, 256)),
+                transforms.Lambda(lambda image: image.convert('RGB')),  # Assuming _convert_to_rgb is this
+                transforms.ToTensor()
+                ])
+            preprocess_val = transforms.Compose([
+                transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.CenterCrop(size=(256, 256)),
+                transforms.Lambda(lambda image: image.convert('RGB')),  # Assuming _convert_to_rgb is this
+                transforms.ToTensor()
+                ])
+            
+            # Freeze all parameters
+            for param in model.parameters():
+                param.requires_grad = False
+
+            # Unfreeze specific layers
+            for param in model.visual.model.network[7][0].parameters():
+                param.requires_grad = True
+
+            del mobile_model
+            t_mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            t_model = AppleMobileCLIP(**(t_model.init_params)).to(device)
+            del t_model.visual
+            t_model.visual = t_mobile_model.image_encoder.to(device)
+
+            del t_model.transformer
+            t_model.transformer = t_mobile_model.text_encoder.to(device)
+
+            del t_mobile_model
+        
+        elif args.light_version == "light_perceiver_mobileclip_s0":
+            mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            model = AppleMobileCLIP(**(model.init_params)).to(device)
+            del model.visual
+            model.visual = mobile_model.image_encoder.to(device)
+
+            init_params_0 = model.visual.model.network[7][0].init_params
+            model.visual.model.network[7][0] = ParallelPerceiver(dim=init_params_0['dim'],k_v_dim=init_params_0['dim'],depth=1,ff_mult=init_params_0['mlp_ratio']).to(device)
+            del model.visual.model.network[7][1]
+
+            analyze_model_components(model.visual.model.network)
+
+            del model.transformer
+            model.transformer = mobile_model.text_encoder.to(device)
+
+            preprocess_train = transforms.Compose([
+                transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.CenterCrop(size=(256, 256)),
+                transforms.Lambda(lambda image: image.convert('RGB')),  # Assuming _convert_to_rgb is this
+                transforms.ToTensor()
+                ])
+            preprocess_val = transforms.Compose([
+                transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.CenterCrop(size=(256, 256)),
+                transforms.Lambda(lambda image: image.convert('RGB')),  # Assuming _convert_to_rgb is this
+                transforms.ToTensor()
+                ])
+            
+            # Freeze all parameters
+            for param in model.parameters():
+                param.requires_grad = False
+
+            # Unfreeze specific layers
+            for param in model.visual.model.network[7][0].parameters():
+                param.requires_grad = True
+
+            del mobile_model
+            t_mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            t_model = AppleMobileCLIP(**(t_model.init_params)).to(device)
+            del t_model.visual
+            t_model.visual = t_mobile_model.image_encoder.to(device)
+
+            del t_model.transformer
+            t_model.transformer = t_mobile_model.text_encoder.to(device)
+
+            del t_mobile_model
+
         else:
             raise KeyError(f'{args.light_version} not supported.')
-        
-    # logging.info(f'model:{model}')
+    if is_master(args):
+        logging.info(f'model:{model}')
     random_seed(args.seed, args.rank)
 
     if args.trace:
@@ -253,8 +475,11 @@ def main(args):
         sd = checkpoint
     if next(iter(sd.items()))[0].startswith('module'):
         sd = {k[len('module.'):]: v for k, v in sd.items()}
-    t_model.load_state_dict(sd)
-    print('Teacher model loaded successfully')
+    
+    mobile_clip_t = ["light_mobileclip_s0","mobileclip_s0","perceiver_mobileclip_s0","light_perceiver_mobileclip_s0","ws_light_mobileclip_s0"]
+    if args.light_version not in mobile_clip_t:# if args.light_version == "light_mobileclip_s0" or "mobileclip_s0", use apple_mobile_clip weight.
+        t_model.load_state_dict(sd)
+        print('Teacher model loaded successfully')
     
     loss = KDClipLoss(
         args=args,
@@ -368,6 +593,17 @@ def main(args):
     for epoch in range(start_epoch, args.epochs):
         if is_master(args):
             logging.info(f'Start epoch {epoch}')
+
+        if any(v in data for v in ('val', 'imagenet-val', 'imagenet-v2')) and epoch == start_epoch:
+            evaluate(model, data, epoch, args, writer)
+
+        if epoch == 5 and (args.light_version == "light_mobileclip_s0" or args.light_version == "ws_light_mobileclip_s0"):#unfreeze modules top of attention block at epoch 5
+            if is_master(args):
+                logging.info("unfreeze proj module of image enc.")
+            for param in model.module.visual.model.conv_exp.parameters():
+                param.requires_grad = True
+            for param in model.module.visual.model.head.parameters():
+                param.requires_grad = True
 
         train_kd_one_epoch(model, t_model, data, epoch, loss, optimizer, scaler, scheduler, args, writer)
         completed_epoch = epoch + 1

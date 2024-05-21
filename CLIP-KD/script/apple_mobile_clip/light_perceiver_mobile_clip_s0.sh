@@ -1,6 +1,6 @@
 cd src
 torchrun --nproc_per_node 2 -m \
-    --master_addr=127.0.0.2 --master_port=29530 \
+    --master_addr=127.0.0.2 --master_port=29588 \
     training.main_kd \
     --save-frequency 1 \
     --zeroshot-frequency 1 \
@@ -27,4 +27,4 @@ torchrun --nproc_per_node 2 -m \
     --alpha_fd_loss 2000. \
     --tag distill-new \
     --light \
-    --light_version light_mobileclip_s0
+    --light_version light_perceiver_mobileclip_s0
