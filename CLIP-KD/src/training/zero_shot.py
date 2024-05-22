@@ -5,12 +5,17 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 from open_clip import get_cast_dtype, get_tokenizer
+import mobileclip
 from .precision import get_autocast
 from .imagenet_zeroshot_data import imagenet_classnames, openai_imagenet_template, imagenet_a, imagenet_r_indices
 
+apple_mobile_clip_models = ["mobileclip_s0","mobileclip_s1","mobileclip_s2","mobileclip_b","mobileclip_blt"]
 
 def zero_shot_classifier(model, classnames, templates, args):
-    tokenizer = get_tokenizer(args.model)
+    if args.model not in apple_mobile_clip_models:
+        tokenizer = get_tokenizer(args.model)
+    else:
+        tokenizer = mobileclip.get_tokenizer(args.model)
     with torch.no_grad():
         zeroshot_weights = []
         for classname in tqdm(classnames):

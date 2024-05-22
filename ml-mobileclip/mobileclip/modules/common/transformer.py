@@ -324,6 +324,287 @@ class MultiHeadAttention(nn.Module):
             key_padding_mask=key_padding_mask,
             attn_mask=attn_mask,
         )
+    
+class ShapedMultiHeadAttention(nn.Module):
+    """
+    This layer applies a multi-head self- or cross-attention as described in
+    `Attention is all you need <https://arxiv.org/abs/1706.03762>`_ paper
+
+    Args:
+        embed_dim (int): :math:`C_{in}` from an expected input of size :math:`(N, S, C_{in})`
+        num_heads (int): Number of heads in multi-head attention
+        attn_dropout (Optional[float]): Attention dropout. Default: 0.0
+        bias (Optional[bool]): Use bias or not. Default: ``True``
+
+    Shape:
+        - Input:
+           - Query tensor (x_q) :math:`(N, S, C_{in})` where :math:`N` is batch size, :math:`S` is number of source tokens,
+        and :math:`C_{in}` is input embedding dim
+           - Optional Key-Value tensor (x_kv) :math:`(N, T, C_{in})` where :math:`T` is number of target tokens
+        - Output: same shape as the input
+
+    """
+
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int,
+        attn_dropout: Optional[float] = 0.0,
+        bias: Optional[bool] = True,
+        output_dim: Optional[int] = None,
+        *args,
+        **kwargs,
+    ) -> None:
+        if output_dim is None:
+            output_dim = embed_dim
+        super().__init__()
+        if embed_dim % num_heads != 0:
+            logger.error(
+                "Embedding dim must be divisible by number of heads in {}. Got: embed_dim={} and num_heads={}".format(
+                    self.__class__.__name__, embed_dim, num_heads
+                )
+            )
+
+        self.qk_proj = nn.Linear(
+            in_features=embed_dim, out_features=2 * embed_dim, bias=bias
+        )
+        # Initialize q weights to 0
+        self.qk_proj.weight.data[:embed_dim,:] = 0.
+
+        self.alpha = nn.Parameter(torch.ones((1, num_heads, 1, 1)))
+        self.beta = nn.Parameter(torch.zeros((1, num_heads, 1, 1)))
+
+        self.attn_dropout = nn.Dropout(p=attn_dropout)
+        # self.out_proj = nn.Linear(
+        #     in_features=embed_dim, out_features=output_dim, bias=bias
+        # )
+
+        self.head_dim = embed_dim // num_heads
+        self.scaling = self.head_dim**-0.5
+        self.softmax = nn.Softmax(dim=-1)
+        self.num_heads = num_heads
+        self.embed_dim = embed_dim
+        self.use_separate_proj_weight = embed_dim != output_dim
+
+    def __repr__(self):
+        return "{}(head_dim={}, num_heads={}, attn_dropout={})".format(
+            self.__class__.__name__, self.head_dim, self.num_heads, self.attn_dropout.p
+        )
+
+    def _forward_impl(
+        self,
+        x_q: Tensor,
+        x_kv: Optional[Tensor] = None,
+        key_padding_mask: Optional[Tensor] = None,
+        attn_mask: Optional[Tensor] = None,
+    ) -> Tensor:
+        # [N, S, C]
+        b_sz, S_len, in_channels = x_q.shape
+
+        if x_kv is None:
+            # self-attention
+            # [N, S, C] --> [N, S, 2C] --> [N, S, 2, h, c] where C = hc
+            qk = self.qk_proj(x_q).reshape(b_sz, S_len, 2, self.num_heads, -1)
+            # [N, S, 2, h, c] --> [N, h, 2, S, C]
+            qk = qk.transpose(1, 3).contiguous()
+
+            # [N, h, 2, S, C] --> [N, h, S, C] x 2
+            query, key, value = qk[:, :, 0], qk[:, :, 1], x_q.reshape(b_sz, S_len, self.num_heads, -1).transpose(1, 2).contiguous()#[N,h,S,C]
+        else:
+            raise ValueError("only support self-attention and x_kv must be None.")
+
+        query = query * self.scaling
+
+        # [N h, T, c] --> [N, h, c, T]
+        key = key.transpose(-1, -2)
+
+        # QK^T
+        # [N, h, S, c] x [N, h, c, T] --> [N, h, S, T]
+        attn = torch.matmul(query, key)
+
+        batch_size, num_heads, num_src_tokens, num_tgt_tokens = attn.shape
+        if attn_mask is not None:
+            # attn_mask shape should be the same as attn
+            assert list(attn_mask.shape) == [
+                batch_size,
+                num_src_tokens,
+                num_tgt_tokens,
+            ], "Shape of attention mask should be [{}, {}, {}]. Got: {}".format(
+                batch_size, num_src_tokens, num_tgt_tokens, attn_mask.shape
+            )
+            # [N, S, T] --> [N, 1, S, T]
+            attn_mask = attn_mask.unsqueeze(1)
+            attn = attn + attn_mask
+
+        if key_padding_mask is not None:
+            # Do not attend to padding positions
+            # key padding mask size is [N, T]
+            assert key_padding_mask.dim() == 2 and list(key_padding_mask.shape) == [
+                batch_size,
+                num_tgt_tokens,
+            ], "Key_padding_mask should be 2-dimension with shape [{}, {}]. Got: {}".format(
+                batch_size, num_tgt_tokens, key_padding_mask.shape
+            )
+            attn = attn.masked_fill(
+                key_padding_mask.unsqueeze(1)
+                .unsqueeze(2)
+                .to(torch.bool),  # [N, T] --> [N, 1, 1, T]
+                float("-inf"),
+            )
+
+        attn_dtype = attn.dtype
+        attn_as_float = self.softmax(attn.float())
+        it = torch.eye(attn.shape[-1]).to(value.device)
+        attn_as_float = self.alpha * it + self.beta * attn_as_float
+
+        attn = attn_as_float.to(attn_dtype)
+        attn = self.attn_dropout(attn)
+
+        # weighted sum
+        # [N, h, S, T] x [N, h, T, c] --> [N, h, S, c]
+        out = torch.matmul(attn, value)
+
+        # [N, h, S, c] --> [N, S, h, c] --> [N, S, C]
+        out = out.transpose(1, 2).reshape(b_sz, S_len, -1)
+
+        return out
+
+    def forward(
+        self,
+        x_q: Tensor,
+        x_kv: Optional[Tensor] = None,
+        key_padding_mask: Optional[Tensor] = None,
+        attn_mask: Optional[Tensor] = None,
+        *args,
+        **kwargs,
+    ) -> Tensor:
+        # [Batch , Sequence, Hidden_dim]
+        return self._forward_impl(
+            x_q=x_q,
+            x_kv=x_kv,
+            key_padding_mask=key_padding_mask,
+            attn_mask=attn_mask,
+        )
+
+class ParallelTransformerEncoder(nn.Module):
+    """
+    This class defines the Parallel `Transformer encoder <https://arxiv.org/abs/2311.01906>`_
+    Args:
+        embed_dim: :math:`C_{in}` from an expected input of size :math:`(N, P, C_{in})`.
+        ffn_latent_dim: Inner dimension of the FFN.
+        num_heads: Number of heads in multi-head attention. Default: 8.
+        attn_dropout: Dropout rate for attention in multi-head attention. Default: 0.0
+        dropout: Dropout rate. Default: 0.0.
+        ffn_dropout: Dropout between FFN layers. Default: 0.0.
+        transformer_norm_layer: Normalization layer. Default: layer_norm.
+        stochastic_dropout: Stochastic dropout setting. Default: 0.0.
+
+    Shape:
+        - Input: :math:`(N, P, C_{in})` where :math:`N` is batch size, :math:`P` is number of patches,
+        and :math:`C_{in}` is input embedding dim
+        - Output: same shape as the input
+    """
+
+    def __init__(
+        self,
+        embed_dim: int,
+        ffn_latent_dim: int,
+        num_heads: Optional[int] = 8,
+        attn_dropout: Optional[float] = 0.0,
+        dropout: Optional[float] = 0.0,
+        ffn_dropout: Optional[float] = 0.0,
+        transformer_norm_layer: Optional[str] = "layer_norm",
+        stochastic_dropout: Optional[float] = 0.0,
+        *args,
+        **kwargs,
+    ) -> None:
+
+        super().__init__()
+
+        # Build attention layer
+        attn_unit = ShapedMultiHeadAttention(
+            embed_dim,
+            num_heads,
+            attn_dropout=attn_dropout,
+            bias=True,
+        )
+        self.norm = get_normalization_layer(
+                norm_type=transformer_norm_layer, num_features=embed_dim
+            )
+
+        self.pre_norm_mha = nn.Sequential(
+            attn_unit,
+            nn.Dropout(p=dropout),
+        )
+
+        act_name = nn.GELU()
+        self.pre_norm_ffn = nn.Sequential(
+            nn.Linear(in_features=embed_dim, out_features=ffn_latent_dim, bias=True),
+            act_name,
+            nn.Dropout(p=ffn_dropout),
+            nn.Linear(in_features=ffn_latent_dim, out_features=embed_dim, bias=True),
+            nn.Dropout(p=dropout),
+        )
+
+        self.drop_path = nn.Identity()
+        if stochastic_dropout > 0.0:
+            if dropout > 0.0:
+                logger.error(
+                    "Stochastic dropout and dropout are mutually exclusive. "
+                    "Use either of them, but not both."
+                    "Got: {} and {}".format(stochastic_dropout, dropout)
+                )
+            self.drop_path = StochasticDepth(p=stochastic_dropout, mode="row")
+
+        self.embed_dim = embed_dim
+        self.ffn_dim = ffn_latent_dim
+        self.ffn_dropout = ffn_dropout
+        self.stochastic_dropout = stochastic_dropout
+        self.std_dropout = dropout
+        self.attn_fn_name = attn_unit.__class__.__name__
+        self.act_fn_name = act_name.__class__.__name__
+        self.norm_type = transformer_norm_layer
+
+    def __repr__(self) -> str:
+        return "{}(embed_dim={}, ffn_dim={}, dropout={}, ffn_dropout={}, stochastic_dropout={}, attn_fn={}, act_fn={}, norm_fn={})".format(
+            self.__class__.__name__,
+            self.embed_dim,
+            self.ffn_dim,
+            self.std_dropout,
+            self.ffn_dropout,
+            self.stochastic_dropout,
+            self.attn_fn_name,
+            self.act_fn_name,
+            self.norm_type,
+        )
+
+    def forward(
+        self,
+        x: Tensor,
+        x_prev: Optional[Tensor] = None,
+        key_padding_mask: Optional[Tensor] = None,
+        attn_mask: Optional[Tensor] = None,
+        *args,
+        **kwargs,
+    ) -> Tensor:
+
+        # Multi-head attention
+        x_norm = self.norm(x)
+        x_att = self.pre_norm_mha[0](
+            x_q=x_norm,
+            x_kv=x_prev,
+            key_padding_mask=key_padding_mask,
+            attn_mask=attn_mask,
+            *args,
+            **kwargs,
+        )  # mha
+
+        x_att = self.drop_path(self.pre_norm_mha[1](x_att))  # applying stochastic depth
+
+        # Feed forward network
+        x_mlp = self.drop_path(self.pre_norm_ffn(x_norm))
+        x = x_att + x_mlp
+        return x
 
 
 class TransformerEncoder(nn.Module):

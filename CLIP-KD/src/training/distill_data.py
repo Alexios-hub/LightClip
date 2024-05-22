@@ -51,8 +51,8 @@ class CsvDataset(Dataset):
     def __getitem__(self, idx):
         img_path = os.path.join(self.root, str(self.images[idx]))
         image_file = Image.open(img_path)
-        images = self.transforms(image_file)
-        texts = self.tokenize([str(self.captions[idx])])[0]
+        images = [transform(image_file) for transform in self.transforms]
+        texts = [tokenizer([str(self.captions[idx])])[0] for tokenizer in self.tokenize]
         return images, texts
 
 
@@ -91,8 +91,9 @@ class ImageNetCsvDataset(Dataset):
         img_path = os.path.join(self.root, self.images[idx])
         definition = "The definition of %s is %s"%(self.class_name[idx], self.captions[idx])
         caption = self.imagenet_templates[np.random.choice(self.imagenet_templates_num)](self.class_name[idx])+ " "+ definition
-        images = self.transforms(Image.open(str(img_path)))
-        texts = self.tokenize([caption])[0]
+        img = Image.open(str(img_path))
+        images = [transform(img) for transform in self.transforms]
+        texts = [tokenizer([caption])[0] for tokenizer in self.tokenize]
         return images, texts
 
 class RetrievalDataset(Dataset):
@@ -120,7 +121,8 @@ class RetrievalDataset(Dataset):
             image = Image.open(os.path.join(self.data_path, 'images/val2014/', 'COCO_val2014_{:012}.jpg'.format(img_key)))
         else:
             image = Image.open(os.path.join(self.data_path, 'images/{}.jpg'.format(img_key)))
-        image = self.transform(image)
+        image = [transformer(image) for transformer in self.transform]
+        # image = self.transform(image)
 
         captions = self.captions[img_key]
         # if len(captions) > 5:
@@ -132,7 +134,7 @@ class RetrievalDataset(Dataset):
             for p in self.prompt_list:
                 sentence_tokenized.append(p.format(sentence.strip()))
             tokenized_caps.extend(sentence_tokenized)
-        texts = self.tokenizer(tokenized_caps)[0]
+        texts = [t(tokenized_caps)[0] for t in self.tokenizer]
         return image, texts
 
     def __len__(self):
@@ -437,11 +439,17 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             # at this point, we have an iterator over the shards assigned to each worker
             wds.tarfile_to_samples(handler=log_and_continue),
         ])
+
+    def multi_preprocess(image,preprocess_funcs):
+        return [preprocess(image) for preprocess in preprocess_funcs]
+    def multi_tokenizer(text,tokenizers):
+        return [tokenize(text)[0] for tokenize in tokenizers]
+    
     pipeline.extend([
         wds.select(filter_no_caption_or_no_image),
         wds.decode("pilrgb", handler=log_and_continue),
         wds.rename(image="jpg;png", text="txt"),
-        wds.map_dict(image=preprocess_img, text=lambda text: tokenizer(text)[0]),
+        wds.map_dict(image=lambda img: multi_preprocess(img,preprocess_img), text=lambda text: multi_tokenizer(text,tokenizer)),#image is a list according to different preprocess funcs
         wds.to_tuple("image", "text"),
         wds.batched(args.batch_size, partial=not is_train),
     ])
@@ -688,26 +696,35 @@ def get_csv_multi_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None
 
 class SyntheticDataset(Dataset):
 
-    def __init__(self, transform=None, image_size=(224, 224), caption="Dummy caption", dataset_size=100, tokenizer=None):
+    def __init__(
+            self,
+            transform=None,
+            image_size=(224, 224),
+            caption="Dummy caption",
+            dataset_size=100,
+            tokenizer=None,
+    ):
         self.transform = transform
         self.image_size = image_size
         self.caption = caption
         self.image = Image.new('RGB', image_size)
         self.dataset_size = dataset_size
 
-        self.preprocess_txt = lambda text: tokenizer(text)[0]
+        def multi_tokenizer(text,tokenizer):
+            return [tokenize(text)[0] for tokenize in tokenizer]
+        self.preprocess_txt = lambda text: multi_tokenizer(text,tokenizer)
 
     def __len__(self):
         return self.dataset_size
 
     def __getitem__(self, idx):
         if self.transform is not None:
-            image = self.transform(self.image)
+            image = [func(self.image) for func in self.transform]
         return image, self.preprocess_txt(self.caption)
 
 
 def get_synthetic_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None):
-    image_size = preprocess_fn.transforms[0].size
+    image_size = preprocess_fn[0].transforms[0].size
     dataset = SyntheticDataset(
         transform=preprocess_fn, image_size=image_size, dataset_size=args.train_num_samples, tokenizer=tokenizer)
     num_samples = len(dataset)
@@ -732,9 +749,9 @@ def get_dataset_fn(data_path, dataset_type):
     if dataset_type == "webdataset":
         return get_wds_dataset
     elif dataset_type == 'icar':
-        return get_icar
+        return get_icar#todo
     elif dataset_type == "vl_imagenet":
-        return get_vl_imagenet
+        return get_vl_imagenet#todo
     elif dataset_type == "csv":
         if ',' in data_path:
             return get_csv_multi_dataset
@@ -754,8 +771,11 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
     
 
-def get_data(args, preprocess_fns, epoch=0, tokenizer=None):
+def get_data_distill(args, preprocess_fns, epoch=0, tokenizer=None):
     preprocess_train, preprocess_val = preprocess_fns
+    assert isinstance(preprocess_train,list)
+    assert isinstance(preprocess_val,list)
+    assert isinstance(tokenizer,list)
     data = {}
 
     if args.train_data or args.dataset_type == "icar":
@@ -771,19 +791,20 @@ def get_data(args, preprocess_fns, epoch=0, tokenizer=None):
     if args.val_data:
         data["val"] = get_dataset_fn(args.val_data, args.val_dataset_type)(
             args, preprocess_val, is_train=False, tokenizer=tokenizer)
-
+        
+    s_preprocess_fns = (preprocess_train[0],preprocess_val[0])
     if args.imagenet_val is not None:
-        data["imagenet-val"] = get_imagenet(args, args.imagenet_val, preprocess_fns)
+        data["imagenet-val"] = get_imagenet(args, args.imagenet_val, s_preprocess_fns)
 
     if args.imagenet_v2 is not None:
-        data["imagenet-v2"] = get_imagenet(args, args.imagenet_v2, preprocess_fns)
+        data["imagenet-v2"] = get_imagenet(args, args.imagenet_v2, s_preprocess_fns)
     
     if args.imagenet_r is not None:
-        data["imagenet-r"] = get_imagenet(args, args.imagenet_r, preprocess_fns)  
+        data["imagenet-r"] = get_imagenet(args, args.imagenet_r, s_preprocess_fns)  
         
     if args.imagenet_a is not None:
-        data["imagenet-a"] = get_imagenet(args, args.imagenet_a, preprocess_fns)  
+        data["imagenet-a"] = get_imagenet(args, args.imagenet_a, s_preprocess_fns)  
         
     if args.imagenet_sketch is not None: 
-        data["imagenet-sketch"] = get_imagenet(args, args.imagenet_sketch, preprocess_fns)  
+        data["imagenet-sketch"] = get_imagenet(args, args.imagenet_sketch, s_preprocess_fns)  
     return data

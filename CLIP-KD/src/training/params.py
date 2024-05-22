@@ -231,17 +231,12 @@ def parse_args(args):
         default="",
         help="model checkpoint path",
     )
-    
-    parser.add_argument(
-        "--t-model",
-        type=str,
-        default="RN50",
-        help="Name of the teacher vision backbone to use.",
-    )
+
     parser.add_argument(
         "--t-model-checkpoint",
         type=str,
-        default="RN50",
+        nargs='+',
+        default=[],
         help="teacher checkpoint path",
     )
     parser.add_argument(
@@ -422,6 +417,12 @@ def parse_args(args):
         "--light_version",
         default="light_mobileclip_s0",
         help="choose light model"
+    )
+    parser.add_argument(
+        "--teachers",
+        default=[],
+        nargs='+',
+        help="teacher model lists"
     )
 
 

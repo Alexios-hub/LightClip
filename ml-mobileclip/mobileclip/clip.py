@@ -22,6 +22,7 @@ class CLIP(nn.Module):
 
     def __init__(self, cfg: Dict, output_dict: bool = False, *args, **kwargs) -> None:
         super().__init__()
+        self.cfg = cfg
         self.output_dict = output_dict
         self.projection_dim = cfg["embed_dim"]
         if self.projection_dim is None:

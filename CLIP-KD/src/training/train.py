@@ -183,20 +183,24 @@ def train_kd_one_epoch(model, t_model, data, epoch, loss, optimizer, scaler, sch
             scheduler(step)
 
         images, texts = batch
-        images = images.to(device=device, dtype=cast_dtype, non_blocking=True)
-        texts = texts.to(device=device, non_blocking=True)
+        images = [img.to(device=device, dtype=cast_dtype, non_blocking=True) for img in images]
+        texts = [txt.to(device=device, non_blocking=True) for txt in texts]
 
         data_time_m.update(time.time() - end)
         optimizer.zero_grad()
 
         with autocast():
-            image_features, text_features, logit_scale = model(images, texts, distill=True, mask_ratio=args.mask_ratio)
+            image_features, text_features, logit_scale = model(images[0], texts[0], distill=True, mask_ratio=args.mask_ratio)
 
             with torch.no_grad():
-                t_image_features, t_text_features, t_logit_scale = t_model(images, texts)
-
+                all_t_image_features, all_t_text_features, all_t_logit_scale = [], [], []
+                for img,txt, teacher_model in zip(images[1:],texts[1:],t_model):
+                    t_image_features, t_text_features, t_logit_scale = teacher_model(img, txt)
+                    all_t_image_features.append(t_image_features)
+                    all_t_text_features.append(t_text_features)
+                    all_t_logit_scale.append(t_logit_scale)
             losses = loss(image_features, text_features, logit_scale, \
-                t_image_features, t_text_features, t_logit_scale)
+                all_t_image_features, all_t_text_features, all_t_logit_scale)
              
             task_loss, ckd_loss, icl_loss, cross_kd_loss, fd_loss, gd_loss, afd_loss = losses
             total_loss = task_loss + ckd_loss + icl_loss + cross_kd_loss + fd_loss + gd_loss + afd_loss
@@ -309,6 +313,10 @@ def evaluate(model, data, epoch, args, tb_writer=None):
         with torch.no_grad():
             for i, batch in enumerate(dataloader):
                 images, texts = batch
+
+                images = images[0]
+                texts = texts[0]
+
                 images = images.to(device=device, dtype=cast_dtype, non_blocking=True)
                 texts = texts.to(device=device, non_blocking=True)
 
