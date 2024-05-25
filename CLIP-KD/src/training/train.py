@@ -234,7 +234,7 @@ def train_kd_one_epoch(model, t_model, data, epoch, loss, optimizer, scaler, sch
         end = time.time()
         batch_count = i + 1
         if is_master(args) and (i % 100 == 0 or batch_count == num_batches_per_epoch):
-            batch_size = len(images)
+            batch_size = len(images[0])
             num_samples = batch_count * batch_size * args.world_size
             samples_per_epoch = dataloader.num_samples
             percent_complete = 100.0 * batch_count / num_batches_per_epoch

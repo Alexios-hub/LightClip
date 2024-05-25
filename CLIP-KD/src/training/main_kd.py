@@ -360,10 +360,10 @@ def main(args):
 
             del model.transformer
             model.transformer = mobile_model.text_encoder.to(device)
-            model.transformer.transformer[1] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            model.transformer.transformer[2] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            model.transformer.transformer[3] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            model.transformer.transformer[4] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            # model.transformer.transformer[1] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            # model.transformer.transformer[2] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            # model.transformer.transformer[3] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            # model.transformer.transformer[4] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
 
             
             # Freeze all parameters
@@ -376,14 +376,14 @@ def main(args):
             for param in model.visual.model.network[7][1].parameters():
                 param.requires_grad = True
 
-            for param in model.transformer.transformer[1].parameters():
-                param.requires_grad = True
-            for param in model.transformer.transformer[2].parameters():
-                param.requires_grad = True
-            for param in model.transformer.transformer[3].parameters():
-                param.requires_grad = True
-            for param in model.transformer.transformer[4].parameters():
-                param.requires_grad = True
+            # for param in model.transformer.transformer[1].parameters():
+            #     param.requires_grad = True
+            # for param in model.transformer.transformer[2].parameters():
+            #     param.requires_grad = True
+            # for param in model.transformer.transformer[3].parameters():
+            #     param.requires_grad = True
+            # for param in model.transformer.transformer[4].parameters():
+            #     param.requires_grad = True
 
             del mobile_model
 
@@ -459,21 +459,6 @@ def main(args):
     if args.grad_checkpointing:
         model.set_grad_checkpointing()
 
-    # if is_master(args):
-    #     logging.info("Teacher Visual Params:")
-    #     logging.info(f"{str(sum([i.numel() for i in t_model.visual.parameters()])/1e6)}M")
-    #     logging.info("Teacher Text Params:")
-    #     logging.info(f"{str(sum([i.numel() for i in t_model.transformer.parameters()])/1e6)}M")
-    #     logging.info("Student Visual Params:")
-    #     logging.info(f"{str(sum([i.numel() for i in model.visual.parameters()])/1e6)}M")
-    #     logging.info("Student Text Params:")
-    #     logging.info(f"{str(sum([i.numel() for i in model.transformer.parameters()])/1e6)}M")
-    #     params_file = os.path.join(args.logs, args.name, "params.txt")
-    #     with open(params_file, "w") as f:
-    #         for name in sorted(vars(args)):
-    #             val = getattr(args, name)
-    #             logging.info(f"  {name}: {val}")
-    #             f.write(f"{name}: {val}\n")
     if is_master(args):
         for idx, t_model in enumerate(teacher_models):
             teacher_name = args.teachers[idx]  
@@ -505,14 +490,6 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
 
     
-    # loss = KDClipLoss(
-    #     args=args,
-    #     local_loss=args.local_loss,
-    #     gather_with_grad=args.gather_with_grad,
-    #     cache_labels=True,
-    #     rank=args.rank,
-    #     world_size=args.world_size,
-    #     use_horovod=args.horovod).cuda()
     loss = MultiClipLoss(
         args=args,
         local_loss=args.local_loss,
@@ -638,8 +615,8 @@ def main(args):
             for param in model.module.visual.model.head.parameters():
                 param.requires_grad = True
 
-            for param in model.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
-                param.requires_grad = True
+            # for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
+            #     param.requires_grad = True
 
         train_kd_one_epoch(model, teacher_models, data, epoch, loss, optimizer, scaler, scheduler, args, writer)
         completed_epoch = epoch + 1

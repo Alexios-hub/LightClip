@@ -425,7 +425,9 @@ class MultiClipLoss(nn.Module):
                 t_all_image_features, t_all_text_features = gather_features(
                     t_image_f, t_text_f,
                     self.local_loss, self.gather_with_grad, self.rank, self.world_size, self.use_horovod)
-
+                
+                t_all_image_features = F.normalize(t_all_image_features,dim=-1)#normalize
+                t_all_text_features = F.normalize(t_all_text_features,dim=-1)#normalize
                 t_logits_per_image = t_logit_sc * t_all_image_features @ t_all_text_features.T
                 t_logits_per_text = t_logits_per_image.T
                 dic = {
@@ -457,7 +459,9 @@ class MultiClipLoss(nn.Module):
             for t_image_f,t_text_f,t_logit_sc in zip(t_image_features,t_text_features,t_logit_scale):
                 t_all_image_features = t_image_f
                 t_all_text_features = t_text_f
-
+                
+                t_all_image_features = F.normalize(t_all_image_features,dim=-1)#normalize
+                t_all_text_features = F.normalize(t_all_text_features,dim=-1)#normalize
                 t_logits_per_image = t_logit_sc * t_all_image_features @ t_all_text_features.T
                 t_logits_per_text = t_logits_per_image.T
                 dic = {
@@ -489,8 +493,8 @@ class MultiClipLoss(nn.Module):
             all_image_features = self.visual_proj(all_image_features)
             all_text_features = self.text_proj(all_text_features)
         
-        t_all_image_features = torch.cat(all_teacher_all_image_features,dim=-1)
-        t_all_text_features = torch.cat(all_teacher_all_text_features,dim=-1)
+        t_all_image_features = F.normalize(torch.cat(all_teacher_all_image_features,dim=-1),dim=-1)#renormalize
+        t_all_text_features = F.normalize(torch.cat(all_teacher_all_text_features,dim=-1),dim=-1)#renormalize
 
         normalized_all_image_features = F.normalize(all_image_features, dim=1)
         normalized_all_text_features = F.normalize(all_text_features, dim=1)
