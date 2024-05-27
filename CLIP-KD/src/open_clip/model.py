@@ -219,9 +219,7 @@ class CLIP(nn.Module):
         return F.normalize(x, dim=-1) if normalize else x
 
     def forward(self, image, text, distill=False, mask_ratio=0.):
-        flag = True
-        if distill is True:
-            flag = False
+        flag = not distill
         image_features = self.encode_image(image, normalize=flag, mask_ratio=mask_ratio)
         text_features = self.encode_text(text, normalize=flag)
         return image_features, text_features, self.logit_scale.exp()
@@ -250,6 +248,37 @@ class AppleMobileCLIP(CLIP):
         x = self.transformer(text, attn_mask=self.attn_mask)
         return F.normalize(x, dim=-1) if normalize else x
     
+class CLIPEnsemble(nn.Module):
+    def __init__(self,
+                 models:list[CLIP],
+                 img_preprocessor:list):
+        super().__init__()
+        self.models = models
+        self.img_preprocessor = img_preprocessor
+
+    
+    def forward(self, image, text, mask_ratio=0.):
+        all_image_features = []
+        all_text_features = []
+        for preprocess,model in zip(self.img_preprocessor,self.models):
+            image_features,text_features, _ = model(preprocess(image),text)
+            all_image_features.append(image_features)
+            all_text_features.append(text_features)
+        all_image_features = F.normalize(torch.cat(all_image_features,dim=-1),-1)
+        all_text_features = F.normalize(torch.cat(all_text_features,dim=-1),dim=-1)
+        return all_image_features,all_text_features,100.
+    
+    def encode_image(self, image, normalize: bool = False, mask_ratio=0.):
+        all_features = []
+        for preprocess,model in zip(self.img_preprocessor,self.models):
+            all_features.append(model.encode_image(preprocess(image), normalize, mask_ratio))
+        return F.normalize(torch.cat(all_features,dim=-1),dim=-1)
+    
+    def encode_text(self, text, normalize: bool = False):
+        all_features = []
+        for model in self.models:
+            all_features.append(model.encode_text(text,normalize))
+        return F.normalize(torch.cat(all_features,dim=-1),dim=-1)
 
 
 

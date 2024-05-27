@@ -30,7 +30,7 @@ except ImportError:
 
 from open_clip import create_model_and_transforms
 from open_clip import trace_model, get_tokenizer
-from open_clip import AppleMobileCLIP
+from open_clip import AppleMobileCLIP,CLIPEnsemble
 # from training.data import get_data
 from training.distill_data import get_data_distill
 from training.distributed import is_master, init_distributed_device, world_info_from_env
@@ -45,7 +45,7 @@ from training.modeling_perceiver_xattn import Perceiver,ParallelPerceiver
 
 import mobileclip
 from mobileclip.models.mci import ParallelAttentionBlock,AttentionBlock
-from mobileclip.modules.common.transformer import ParallelTransformerEncoder
+from mobileclip.modules.common.transformer import ParallelTransformerEncoder,TransformerEncoder
 from open_clip.model import CLIPVisionCfg,CLIPTextCfg
 import copy
 import torchvision.transforms as transforms
@@ -266,7 +266,8 @@ def main(args):
 
 
     if args.light:
-        print(f'light_version:{args.light_version}')
+        if is_master(args):
+            logging.info(f'light_version:{args.light_version}')
         if args.light_version == "light_swin_tiny":
             del model.visual
             model_cfg = get_model_config(args.model)
@@ -386,53 +387,36 @@ def main(args):
             #     param.requires_grad = True
 
             del mobile_model
-
-        elif args.light_version == "perceiver_mobileclip_s0":
+        elif args.light_version == "light_txtencoder_mobileclip_s0":
             mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
             model = AppleMobileCLIP(**(model.init_params)).to(device)
             del model.visual
             model.visual = mobile_model.image_encoder.to(device)
-
-            init_params_0 = model.visual.model.network[7][0].init_params
-            model.visual.model.network[7][0] = Perceiver(dim=init_params_0['dim'],k_v_dim=init_params_0['dim'],depth=1,ff_mult=init_params_0['mlp_ratio']).to(device)
-            del model.visual.model.network[7][1]
-
-            analyze_model_components(model.visual.model.network)
-
             del model.transformer
             model.transformer = mobile_model.text_encoder.to(device)
+            model.transformer.transformer[1] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            model.transformer.transformer[2] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            model.transformer.transformer[3] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            model.transformer.transformer[4] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+
+            # #for comparision
+            # model.transformer.transformer[1] = TransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            # model.transformer.transformer[2] = TransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            # model.transformer.transformer[3] = TransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            # model.transformer.transformer[4] = TransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+
             
             # Freeze all parameters
             for param in model.parameters():
                 param.requires_grad = False
 
-            # Unfreeze specific layers
-            for param in model.visual.model.network[7][0].parameters():
+            for param in model.transformer.transformer[1].parameters():
                 param.requires_grad = True
-
-            del mobile_model
-        
-        elif args.light_version == "light_perceiver_mobileclip_s0":
-            mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
-            model = AppleMobileCLIP(**(model.init_params)).to(device)
-            del model.visual
-            model.visual = mobile_model.image_encoder.to(device)
-
-            init_params_0 = model.visual.model.network[7][0].init_params
-            model.visual.model.network[7][0] = ParallelPerceiver(dim=init_params_0['dim'],k_v_dim=init_params_0['dim'],depth=1,ff_mult=init_params_0['mlp_ratio']).to(device)
-            del model.visual.model.network[7][1]
-
-            analyze_model_components(model.visual.model.network)
-
-            del model.transformer
-            model.transformer = mobile_model.text_encoder.to(device)
-            
-            # Freeze all parameters
-            for param in model.parameters():
-                param.requires_grad = False
-
-            # Unfreeze specific layers
-            for param in model.visual.model.network[7][0].parameters():
+            for param in model.transformer.transformer[2].parameters():
+                param.requires_grad = True
+            for param in model.transformer.transformer[3].parameters():
+                param.requires_grad = True
+            for param in model.transformer.transformer[4].parameters():
                 param.requires_grad = True
 
             del mobile_model
@@ -596,16 +580,16 @@ def main(args):
         evaluate(model, data, start_epoch, args, writer)
         return
 
-    if args.t_eval:
+    if args.t_eval and is_master(args):
         print('evaluate teacher:')
-        evaluate(t_model, data, start_epoch, args, writer)# todo:evaluate teachers
+        evaluate(CLIPEnsemble(teacher_models,preprocess_train[1:]), data, start_epoch, args, writer)# todo:evaluate teachers
     
     for epoch in range(start_epoch, args.epochs):
         if is_master(args):
             logging.info(f'Start epoch {epoch}')
 
-        if any(v in data for v in ('val', 'imagenet-val', 'imagenet-v2')) and epoch == start_epoch:
-            evaluate(model, data, epoch, args, writer)
+        # if any(v in data for v in ('val', 'imagenet-val', 'imagenet-v2')) and epoch == start_epoch:
+        #     evaluate(model, data, epoch, args, writer)
 
         if epoch == 5 and (args.light_version == "light_mobileclip_s0" or args.light_version == "ws_light_mobileclip_s0"):#unfreeze modules top of attention block at epoch 5
             if is_master(args):
@@ -615,8 +599,9 @@ def main(args):
             for param in model.module.visual.model.head.parameters():
                 param.requires_grad = True
 
-            # for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
-            #     param.requires_grad = True
+        if epoch == 5 and (args.light_version == "light_txtencoder_mobileclip_s0"):
+            for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
+                param.requires_grad = True
 
         train_kd_one_epoch(model, teacher_models, data, epoch, loss, optimizer, scaler, scheduler, args, writer)
         completed_epoch = epoch + 1

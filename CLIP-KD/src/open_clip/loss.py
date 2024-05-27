@@ -392,8 +392,8 @@ class MultiClipLoss(nn.Module):
         self.args = args
 
         if args.t_embed_dim != args.s_embed_dim:
-            self.visual_proj = nn.Linear(args.s_embed_dim, args.t_embed_dim)
-            self.text_proj = nn.Linear(args.s_embed_dim, args.t_embed_dim)
+            self.visual_proj = torch.nn.utils.parametrizations.orthogonal(nn.Linear(args.s_embed_dim, args.t_embed_dim, bias=False))
+            self.text_proj = torch.nn.utils.parametrizations.orthogonal(nn.Linear(args.s_embed_dim, args.t_embed_dim, bias=False))
         
         if args.alpha_afd_loss > 0.:
             self.visual_fusion_proj = nn.Linear(args.s_embed_dim+args.t_embed_dim, args.s_embed_dim)
@@ -426,8 +426,8 @@ class MultiClipLoss(nn.Module):
                     t_image_f, t_text_f,
                     self.local_loss, self.gather_with_grad, self.rank, self.world_size, self.use_horovod)
                 
-                t_all_image_features = F.normalize(t_all_image_features,dim=-1)#normalize
-                t_all_text_features = F.normalize(t_all_text_features,dim=-1)#normalize
+                # t_all_image_features = F.normalize(t_all_image_features,dim=-1)#normalize
+                # t_all_text_features = F.normalize(t_all_text_features,dim=-1)#normalize
                 t_logits_per_image = t_logit_sc * t_all_image_features @ t_all_text_features.T
                 t_logits_per_text = t_logits_per_image.T
                 dic = {
@@ -460,8 +460,8 @@ class MultiClipLoss(nn.Module):
                 t_all_image_features = t_image_f
                 t_all_text_features = t_text_f
                 
-                t_all_image_features = F.normalize(t_all_image_features,dim=-1)#normalize
-                t_all_text_features = F.normalize(t_all_text_features,dim=-1)#normalize
+                # t_all_image_features = F.normalize(t_all_image_features,dim=-1)#normalize
+                # t_all_text_features = F.normalize(t_all_text_features,dim=-1)#normalize
                 t_logits_per_image = t_logit_sc * t_all_image_features @ t_all_text_features.T
                 t_logits_per_text = t_logits_per_image.T
                 dic = {

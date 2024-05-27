@@ -352,6 +352,7 @@ class ShapedMultiHeadAttention(nn.Module):
         attn_dropout: Optional[float] = 0.0,
         bias: Optional[bool] = True,
         output_dim: Optional[int] = None,
+        n_c = 77,
         *args,
         **kwargs,
     ) -> None:
@@ -372,12 +373,12 @@ class ShapedMultiHeadAttention(nn.Module):
         self.qk_proj.weight.data[:embed_dim,:] = 0.
 
         self.alpha = nn.Parameter(torch.ones((1, num_heads, 1, 1)))
-        self.beta = nn.Parameter(torch.zeros((1, num_heads, 1, 1)))
+        self.beta = nn.Parameter(torch.ones((1, num_heads, 1, 1)))
+        self.gamma = nn.Parameter(torch.ones((1, num_heads, 1, 1)))
+        self.register_buffer('C',torch.ones((n_c,n_c))/n_c)
+        self.register_buffer('it',torch.eye(n_c))
 
         self.attn_dropout = nn.Dropout(p=attn_dropout)
-        # self.out_proj = nn.Linear(
-        #     in_features=embed_dim, out_features=output_dim, bias=bias
-        # )
 
         self.head_dim = embed_dim // num_heads
         self.scaling = self.head_dim**-0.5
@@ -454,8 +455,9 @@ class ShapedMultiHeadAttention(nn.Module):
 
         attn_dtype = attn.dtype
         attn_as_float = self.softmax(attn.float())
-        it = torch.eye(attn.shape[-1]).to(value.device)
-        attn_as_float = self.alpha * it + self.beta * attn_as_float
+
+
+        attn_as_float = self.alpha * self.it + self.beta * attn_as_float - self.gamma * self.C
 
         attn = attn_as_float.to(attn_dtype)
         attn = self.attn_dropout(attn)

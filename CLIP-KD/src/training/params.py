@@ -424,6 +424,12 @@ def parse_args(args):
         nargs='+',
         help="teacher model lists"
     )
+    parser.add_argument(
+        "--t_eval",
+        default=False,
+        action="store_true",
+        help="evaluate teacher before training."
+    )
 
 
     args = parser.parse_args(args)

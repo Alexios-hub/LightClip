@@ -164,6 +164,7 @@ class ShapedMHSA(nn.Module):
         qkv_bias: bool = False,
         attn_drop: float = 0.0,
         proj_drop: float = 0.0,
+        n_c:int = 8*8
     ) -> None:
         """Build Shaped MHSA module that can handle 3D or 4D input tensors.
 
@@ -187,7 +188,10 @@ class ShapedMHSA(nn.Module):
         self.attn_drop = nn.Dropout(attn_drop)
 
         self.alpha = nn.Parameter(torch.ones((1, self.num_heads, 1, 1)))
-        self.beta = nn.Parameter(torch.zeros((1, self.num_heads, 1, 1)))
+        self.beta = nn.Parameter(torch.ones((1, self.num_heads, 1, 1)))
+        self.gamma = nn.Parameter(torch.ones((1, self.num_heads, 1, 1)))
+        self.register_buffer('C',torch.ones((n_c, n_c)) / n_c)
+        self.register_buffer('it',torch.eye(n_c))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         shape = x.shape
@@ -207,9 +211,7 @@ class ShapedMHSA(nn.Module):
         attn = (q * self.scale) @ k.transpose(-2, -1)
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
-
-        it = torch.eye(N).to(v.device)
-        attn = self.alpha * it + self.beta * attn
+        attn = self.alpha * self.it + self.beta * attn - self.gamma * self.C
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
 
