@@ -372,16 +372,7 @@ class KDClipLoss(nn.Module):
         return task_loss, ckd_loss, icl_loss, cross_kd_loss, fd_loss, gd_loss, afd_loss
     
 class MultiClipLoss(nn.Module):
-    def __init__(
-            self,
-            args,
-            local_loss=False,
-            gather_with_grad=False,
-            cache_labels=False,
-            rank=0,
-            world_size=1,
-            use_horovod=False,
-    ):
+    def __init__(self, args, local_loss=False, gather_with_grad=False, cache_labels=False, rank=0, world_size=1, use_horovod=False):
         super().__init__()
         self.local_loss = local_loss
         self.gather_with_grad = gather_with_grad
@@ -391,192 +382,144 @@ class MultiClipLoss(nn.Module):
         self.use_horovod = use_horovod
         self.args = args
 
-        if args.t_embed_dim != args.s_embed_dim:
-            self.visual_proj = torch.nn.utils.parametrizations.orthogonal(nn.Linear(args.s_embed_dim, args.t_embed_dim, bias=False))
-            self.text_proj = torch.nn.utils.parametrizations.orthogonal(nn.Linear(args.s_embed_dim, args.t_embed_dim, bias=False))
-        
+        assert isinstance(args.t_embed_dim, list)
+        self.visual_proj = nn.ModuleList([torch.nn.utils.parametrizations.orthogonal(nn.Linear(args.s_embed_dim, dim, bias=False))for dim in args.t_embed_dim])
+        self.text_proj = nn.ModuleList([torch.nn.utils.parametrizations.orthogonal(nn.Linear(args.s_embed_dim, dim, bias=False)) for dim in args.t_embed_dim])
+
         if args.alpha_afd_loss > 0.:
-            self.visual_fusion_proj = nn.Linear(args.s_embed_dim+args.t_embed_dim, args.s_embed_dim)
-            self.text_fusion_proj = nn.Linear(args.s_embed_dim+args.t_embed_dim, args.s_embed_dim)
-            
-        # cache state
+            self.visual_fusion_proj = nn.Linear(args.s_embed_dim + max(args.t_embed_dim), args.s_embed_dim)
+            self.text_fusion_proj = nn.Linear(args.s_embed_dim + max(args.t_embed_dim), args.s_embed_dim)
+
         self.prev_num_logits = 0
         self.kl_loss = DistillKL(T=1)
-        self.cross_logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+        self.cross_logit_scale = nn.ParameterList([nn.Parameter(torch.ones([]) * np.log(1 / 0.07)) for _ in args.t_embed_dim])
         self.fusion_logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
         self.labels = {}
 
-    def forward(self, image_features, text_features, logit_scale, \
-        t_image_features, t_text_features, t_logit_scale):
-        """
-        t_image_features,t_text_features,t_logit_scale:list of each teacher's output
-        """
+    def forward(self, image_features, text_features, logit_scale, t_image_features, t_text_features, t_logit_scale):
         device = image_features.device
+        all_image_features, all_text_features, all_teacher_logits, all_teacher_all_image_features, all_teacher_all_text_features = \
+            self._gather_features(image_features, text_features, t_image_features, t_text_features, t_logit_scale)
+
+        normalized_image_features = F.normalize(image_features, dim=1)
+        normalized_text_features = F.normalize(text_features, dim=1)
+        normalized_all_image_features = F.normalize(all_image_features, dim=1)
+        normalized_all_text_features = F.normalize(all_text_features, dim=1)
+
+        logits_per_image, logits_per_text = self._compute_logits(logit_scale, normalized_image_features, normalized_text_features, normalized_all_image_features, normalized_all_text_features)
+        labels = self._get_labels(logits_per_image.shape[0], device)
+        
+        all_image_features_proj, all_text_features_proj = self._project_features(all_image_features, all_text_features)
+        fd_loss = self._compute_fd_loss(all_image_features_proj, all_text_features_proj, all_teacher_all_image_features, all_teacher_all_text_features)
+
+        logits_per_s_image_to_t_text, logits_per_s_text_to_t_image = self._compute_cross_logits(all_image_features_proj, all_text_features_proj, all_teacher_all_image_features, all_teacher_all_text_features)
+        
+        task_loss = (F.cross_entropy(logits_per_image, labels) + F.cross_entropy(logits_per_text, labels)) / 2
+        icl_loss = (F.cross_entropy(torch.mean(torch.stack(logits_per_s_image_to_t_text), dim=0), labels) +
+                    F.cross_entropy(torch.mean(torch.stack(logits_per_s_text_to_t_image), dim=0), labels)) / 2
+
+        ckd_loss, cross_kd_loss = self._compute_kd_loss(logits_per_image, logits_per_text, logits_per_s_image_to_t_text, logits_per_s_text_to_t_image, all_teacher_logits)
+
+        #set gd_loss and afd_loss = 0 as default for efficiency
+        # gd_loss = self._compute_gd_loss(all_image_features_proj, all_text_features_proj, t_logit_scale, labels, logit_scale) if self.args.alpha_gd_loss > 0. else torch.tensor(0.).to(device)
+        # afd_loss = self._compute_afd_loss(all_image_features_proj, all_text_features_proj, all_teacher_all_image_features, all_teacher_all_text_features, labels) if self.args.alpha_afd_loss > 0. else torch.tensor(0.).to(device)
+        gd_loss = torch.tensor(0.).cuda() 
+        afd_loss = torch.tensor(0.).cuda() 
+        
+        return self._apply_loss_weights(task_loss, ckd_loss, icl_loss, cross_kd_loss, fd_loss, gd_loss, afd_loss)
+
+    def _gather_features(self, image_features, text_features, t_image_features, t_text_features, t_logit_scale):
         if self.world_size > 1:
-            all_image_features, all_text_features = gather_features(
-                image_features, text_features,
-                self.local_loss, self.gather_with_grad, self.rank, self.world_size, self.use_horovod)
-            all_teacher_logits = []
-            all_teacher_all_image_features = []
-            all_teacher_all_text_features = []
-
-            for t_image_f,t_text_f,t_logit_sc in zip(t_image_features,t_text_features,t_logit_scale):
-
-                t_all_image_features, t_all_text_features = gather_features(
-                    t_image_f, t_text_f,
-                    self.local_loss, self.gather_with_grad, self.rank, self.world_size, self.use_horovod)
-                
-                # t_all_image_features = F.normalize(t_all_image_features,dim=-1)#normalize
-                # t_all_text_features = F.normalize(t_all_text_features,dim=-1)#normalize
-                t_logits_per_image = t_logit_sc * t_all_image_features @ t_all_text_features.T
-                t_logits_per_text = t_logits_per_image.T
-                dic = {
-                    't_logits_per_image':t_logits_per_image,
-                    't_logits_per_text':t_logits_per_text,
-                }
-                all_teacher_logits.append(dic)
-                all_teacher_all_image_features.append(t_all_image_features)
-                all_teacher_all_text_features.append(t_all_text_features)
-
-            normalized_image_features = F.normalize(image_features, dim=1)
-            normalized_text_features = F.normalize(text_features, dim=1)
-            normalized_all_image_features = F.normalize(all_image_features, dim=1)
-            normalized_all_text_features = F.normalize(all_text_features, dim=1)
-            
-            if self.local_loss:
-                logits_per_image = logit_scale * normalized_image_features @ normalized_all_text_features.T
-                logits_per_text = logit_scale * normalized_text_features @ normalized_all_image_features.T
-            else:
-                logits_per_image = logit_scale * normalized_all_image_features @ normalized_all_text_features.T
-                logits_per_text = logits_per_image.T
+            all_image_features, all_text_features = gather_features(image_features, text_features, self.local_loss, self.gather_with_grad, self.rank, self.world_size, self.use_horovod)
         else:
-            all_teacher_logits = []
-            all_teacher_all_image_features = []
-            all_teacher_all_text_features = []
+            all_image_features, all_text_features = image_features, text_features
 
-            all_image_features = image_features
-            all_text_features = text_features
-            for t_image_f,t_text_f,t_logit_sc in zip(t_image_features,t_text_features,t_logit_scale):
-                t_all_image_features = t_image_f
-                t_all_text_features = t_text_f
+        all_teacher_logits, all_teacher_all_image_features, all_teacher_all_text_features = [], [], []
+        for t_image_f, t_text_f, t_logit_sc in zip(t_image_features, t_text_features, t_logit_scale):
+            if self.world_size > 1:
+                t_all_image_features, t_all_text_features = gather_features(t_image_f, t_text_f, self.local_loss, self.gather_with_grad, self.rank, self.world_size, self.use_horovod)
+            else:
+                t_all_image_features, t_all_text_features = t_image_f, t_text_f
                 
-                # t_all_image_features = F.normalize(t_all_image_features,dim=-1)#normalize
-                # t_all_text_features = F.normalize(t_all_text_features,dim=-1)#normalize
-                t_logits_per_image = t_logit_sc * t_all_image_features @ t_all_text_features.T
-                t_logits_per_text = t_logits_per_image.T
-                dic = {
-                    't_logits_per_image':t_logits_per_image,
-                    't_logits_per_text':t_logits_per_text,
-                }
-                all_teacher_logits.append(dic)
-                all_teacher_all_image_features.append(t_all_image_features)
-                all_teacher_all_text_features.append(t_all_text_features)
+            t_logits_per_image = t_logit_sc * t_all_image_features @ t_all_text_features.T
+            t_logits_per_text = t_logits_per_image.T
+            all_teacher_logits.append({'t_logits_per_image': t_logits_per_image, 't_logits_per_text': t_logits_per_text})
+            all_teacher_all_image_features.append(t_all_image_features)
+            all_teacher_all_text_features.append(t_all_text_features)
 
-            normalized_image_features = F.normalize(image_features,dim=-1)
-            normalized_text_features = F.normalize(text_features,dim=-1)
-            logits_per_image = logit_scale * normalized_image_features @ normalized_text_features.T
-            logits_per_text = logit_scale * normalized_text_features @ normalized_image_features.T
+        return all_image_features, all_text_features, all_teacher_logits, all_teacher_all_image_features, all_teacher_all_text_features
 
-        # calculated ground-truth and cache if enabled
-        num_logits = logits_per_image.shape[0]
+    def _compute_logits(self, logit_scale, normalized_image_features, normalized_text_features, normalized_all_image_features, normalized_all_text_features):
+        if self.local_loss:
+            logits_per_image = logit_scale * normalized_image_features @ normalized_all_text_features.T
+            logits_per_text = logit_scale * normalized_text_features @ normalized_all_image_features.T
+        else:
+            logits_per_image = logit_scale * normalized_all_image_features @ normalized_all_text_features.T
+            logits_per_text = logits_per_image.T
+        return logits_per_image, logits_per_text
+
+    def _get_labels(self, num_logits, device):
         if self.prev_num_logits != num_logits or device not in self.labels:
             labels = torch.arange(num_logits, device=device, dtype=torch.long)
             if self.world_size > 1 and self.local_loss:
-                labels = labels + num_logits * self.rank
+                labels += num_logits * self.rank
             if self.cache_labels:
                 self.labels[device] = labels
                 self.prev_num_logits = num_logits
         else:
             labels = self.labels[device]
+        return labels
 
-        if self.args.t_embed_dim != self.args.s_embed_dim:
-            all_image_features = self.visual_proj(all_image_features)
-            all_text_features = self.text_proj(all_text_features)
-        
-        t_all_image_features = F.normalize(torch.cat(all_teacher_all_image_features,dim=-1),dim=-1)#renormalize
-        t_all_text_features = F.normalize(torch.cat(all_teacher_all_text_features,dim=-1),dim=-1)#renormalize
+    def _project_features(self, all_image_features, all_text_features):
+        all_image_features_proj = [proj(all_image_features) for proj in self.visual_proj]
+        all_text_features_proj = [proj(all_text_features) for proj in self.text_proj]
+        return [F.normalize(feat, dim=-1) for feat in all_image_features_proj], [F.normalize(feat, dim=-1) for feat in all_text_features_proj]
 
-        normalized_all_image_features = F.normalize(all_image_features, dim=1)
-        normalized_all_text_features = F.normalize(all_text_features, dim=1)
-        fd_loss = F.mse_loss(normalized_all_image_features, t_all_image_features) +\
-            F.mse_loss(normalized_all_text_features, t_all_text_features)
-            
-        logits_per_s_image_to_t_text = self.cross_logit_scale * normalized_all_image_features @ t_all_text_features.T
-        logits_per_s_text_to_t_image = self.cross_logit_scale * normalized_all_text_features @ t_all_image_features.T
-        
-        task_loss = (
-            F.cross_entropy(logits_per_image, labels) +
-            F.cross_entropy(logits_per_text, labels)
-            ) / 2
-        
-        ckd_loss = torch.tensor(0.).cuda() 
-        icl_loss = torch.tensor(0.).cuda() 
-        cross_kd_loss = torch.tensor(0.).cuda() 
-        gd_loss = torch.tensor(0.).cuda() 
-        afd_loss = torch.tensor(0.).cuda() 
-        
-        icl_loss = (
-            F.cross_entropy(logits_per_s_image_to_t_text, labels) +
-            F.cross_entropy(logits_per_s_text_to_t_image, labels)
-            ) / 2
-        #compute mean KL divergence on each student-teacher pair
-        all_ckd_loss = []
-        all_cross_kd_loss = []
-        for dic in all_teacher_logits:
-            t_logits_per_image = dic['t_logits_per_image']
-            t_logits_per_text = dic['t_logits_per_text']
+    def _compute_fd_loss(self, all_image_features_proj, all_text_features_proj, all_teacher_all_image_features, all_teacher_all_text_features):
+        return sum(F.mse_loss(s_img, t_img) + F.mse_loss(s_txt, t_txt) for s_img, t_img, s_txt, t_txt in zip(all_image_features_proj, all_teacher_all_image_features, all_text_features_proj, all_teacher_all_text_features)) / len(all_image_features_proj)
 
-            ckd_loss = (self.kl_loss(logits_per_image, t_logits_per_image.detach()) +\
-                self.kl_loss(logits_per_text, t_logits_per_text.detach())) / 2
-            all_ckd_loss.append(ckd_loss)
+    def _compute_cross_logits(self, all_image_features_proj, all_text_features_proj, all_teacher_all_image_features, all_teacher_all_text_features):
+        logits_per_s_image_to_t_text = [scale * s_img @ t_txt.T for scale, s_img, t_txt in zip(self.cross_logit_scale, all_image_features_proj, all_teacher_all_text_features)]
+        logits_per_s_text_to_t_image = [scale * s_txt @ t_img.T for scale, s_txt, t_img in zip(self.cross_logit_scale, all_text_features_proj, all_teacher_all_image_features)]
+        return logits_per_s_image_to_t_text, logits_per_s_text_to_t_image
 
-            cross_kd_loss = (self.kl_loss(logits_per_s_image_to_t_text, t_logits_per_image.detach()) +\
-                self.kl_loss(logits_per_s_text_to_t_image, t_logits_per_text.detach())) / 2
-            all_cross_kd_loss.append(cross_kd_loss)
+    def _compute_kd_loss(self, logits_per_image, logits_per_text, logits_per_s_image_to_t_text, logits_per_s_text_to_t_image, all_teacher_logits):
+        ckd_losses, cross_kd_losses = [], []
+        for dic, s_img_to_t_txt, s_txt_to_t_img in zip(all_teacher_logits, logits_per_s_image_to_t_text, logits_per_s_text_to_t_image):
+            t_img_logits, t_txt_logits = dic['t_logits_per_image'], dic['t_logits_per_text']
+            ckd_losses.append((self.kl_loss(logits_per_image, t_img_logits.detach()) + self.kl_loss(logits_per_text, t_txt_logits.detach())) / 2)
+            cross_kd_losses.append((self.kl_loss(s_img_to_t_txt, t_img_logits.detach()) + self.kl_loss(s_txt_to_t_img, t_txt_logits.detach())) / 2)
+        return torch.mean(torch.stack(ckd_losses)), torch.mean(torch.stack(cross_kd_losses))
 
-        ckd_loss = torch.mean(torch.stack(all_ckd_loss))
-        cross_kd_loss = torch.mean(torch.stack(all_cross_kd_loss))
+    def _compute_gd_loss(self, all_image_features_proj, all_text_features_proj, t_logit_scale, labels, logit_scale):
+        with torch.no_grad():
+            t_grad_p_img, t_grad_k_txt = self._get_gradients(all_image_features_proj, all_text_features_proj, t_logit_scale, labels)
+            t_grad_p_txt, t_grad_k_img = self._get_gradients(all_text_features_proj, all_image_features_proj, t_logit_scale, labels)
 
+        s_grad_p_img, s_grad_k_txt = self._get_gradients(all_image_features_proj, all_text_features_proj, logit_scale, labels)
+        s_grad_p_txt, s_grad_k_img = self._get_gradients(all_text_features_proj, all_image_features_proj, logit_scale, labels)
 
+        return F.mse_loss(s_grad_p_img, t_grad_p_img.detach()) + F.mse_loss(s_grad_k_txt, t_grad_k_txt.detach()) + F.mse_loss(s_grad_p_txt, t_grad_p_txt.detach()) + F.mse_loss(s_grad_k_img, t_grad_k_img.detach())
 
-        #kd_loss = (F.cross_entropy(logits_per_image, F.softmax(, dim=1)) \
-        #    + F.cross_entropy(logits_per_text, F.softmax(t_logits_per_text.detach(), dim=1))) / 2
-        
-        
-        if self.args.alpha_gd_loss > 0.:
-            with torch.no_grad():
-                t_grad_p_img, t_grad_k_txt = get_grad(t_all_image_features, t_all_text_features, t_logit_scale, labels)
-                t_grad_p_txt, t_grad_k_img = get_grad(t_all_text_features, t_all_image_features, t_logit_scale, labels)
-            
-            s_grad_p_img, s_grad_k_txt = get_grad(normalized_all_image_features, normalized_all_text_features, logit_scale, labels)
-            s_grad_p_txt, s_grad_k_img = get_grad(normalized_all_text_features, normalized_all_image_features, logit_scale, labels)
+    def _get_gradients(self, features1, features2, logit_scale, labels):
+        logits = logit_scale * features1 @ features2.T
+        logits_grad = torch.autograd.grad(logits, [features1, features2], grad_outputs=torch.ones_like(logits), retain_graph=True)
+        return logits_grad
 
-            gd_loss = F.mse_loss(s_grad_p_img, t_grad_p_img.detach()) +\
-                F.mse_loss(s_grad_k_txt, t_grad_k_txt.detach()) +\
-                    F.mse_loss(s_grad_p_txt, t_grad_p_txt.detach()) +\
-                        F.mse_loss(s_grad_k_img, t_grad_k_img.detach()) 
-        
-        if self.args.alpha_afd_loss > 0.:
-            img_fusion_feat = torch.cat([normalized_all_image_features, t_all_image_features], dim=1)
-            txt_fusion_feat = torch.cat([normalized_all_text_features, t_all_text_features], dim=1)
-            img_fusion_feat = self.visual_fusion_proj(img_fusion_feat)
-            txt_fusion_feat = self.text_fusion_proj(txt_fusion_feat)
-            img_fusion_feat = F.normalize(img_fusion_feat, dim=1)
-            txt_fusion_feat = F.normalize(txt_fusion_feat, dim=1)
-            
-            logits_per_fusion_image = self.fusion_logit_scale * img_fusion_feat @ txt_fusion_feat.T
-            logits_per_fusion_text = logits_per_fusion_image.T
-            afd_loss = (
-                F.cross_entropy(logits_per_fusion_image, labels) +
-                F.cross_entropy(logits_per_fusion_text, labels)
-            ) / 2
-            
-            
-        ckd_loss = self.args.alpha_ckd_loss * ckd_loss
-        icl_loss = self.args.alpha_icl_loss * icl_loss
-        cross_kd_loss = self.args.alpha_cross_kd_loss * cross_kd_loss
-        fd_loss = self.args.alpha_fd_loss * fd_loss
-        gd_loss = self.args.alpha_gd_loss * gd_loss
-        afd_loss = self.args.alpha_afd_loss * afd_loss
-        
-        return task_loss, ckd_loss, icl_loss, cross_kd_loss, fd_loss, gd_loss, afd_loss
+    def _compute_afd_loss(self, all_image_features_proj, all_text_features_proj, all_teacher_all_image_features, all_teacher_all_text_features, labels):
+        img_fusion_feat = F.normalize(self.visual_fusion_proj(torch.cat([all_image_features_proj, all_teacher_all_image_features], dim=1)), dim=1)
+        txt_fusion_feat = F.normalize(self.text_fusion_proj(torch.cat([all_text_features_proj, all_teacher_all_text_features], dim=1)), dim=1)
+        logits_per_fusion_image = self.fusion_logit_scale * img_fusion_feat @ txt_fusion_feat.T
+        logits_per_fusion_text = logits_per_fusion_image.T
+        return (F.cross_entropy(logits_per_fusion_image, labels) + F.cross_entropy(logits_per_fusion_text, labels)) / 2
+
+    def _apply_loss_weights(self, task_loss, ckd_loss, icl_loss, cross_kd_loss, fd_loss, gd_loss, afd_loss):
+        return (
+            task_loss,
+            self.args.alpha_ckd_loss * ckd_loss,
+            self.args.alpha_icl_loss * icl_loss,
+            self.args.alpha_cross_kd_loss * cross_kd_loss,
+            self.args.alpha_fd_loss * fd_loss,
+            self.args.alpha_gd_loss * gd_loss,
+            self.args.alpha_afd_loss * afd_loss
+        )

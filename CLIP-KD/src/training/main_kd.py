@@ -119,16 +119,6 @@ def main(args):
 
     # sanitize model name for filesystem / uri use, easier if we don't use / in name as a rule?
     args.model = args.model.replace('/', '-')
-    try:
-        with open(os.path.join(os.getcwd(), 'open_clip/model_configs/'+args.t_model+'.json'), 'r') as f:
-            args.t_embed_dim = json.load(f)['embed_dim']
-    except Exception as e:
-        args.t_embed_dim = -1
-    try:
-        with open(os.path.join(os.getcwd(), 'open_clip/model_configs/'+args.model+'.json'), 'r') as f:
-            args.s_embed_dim = json.load(f)['embed_dim']
-    except Exception as e:
-        args.s_embed_dim = -1
     
     # get the name of the experiments
     if args.name is None:
@@ -220,7 +210,7 @@ def main(args):
     preprocess_val = [preprocess_val]
 
     teacher_models = []
-    args.t_embed_dim = 0
+    args.t_embed_dim = []
     for i in range(len(args.teachers)):
         
         teacher = args.teachers[i]
@@ -230,7 +220,7 @@ def main(args):
             temp_t_model, temp_preprocess_train, _ = create_apple_mobile_clip_model(device=device,
                                                                                  mobile_model_name=teacher,
                                                                                  pretrained=f'/home/alex/data/LightClip/ml-mobileclip/checkpoints/{teacher}.pt')
-            args.t_embed_dim = args.t_embed_dim + 512
+            args.t_embed_dim.append(512)
             tokenizers.append(mobileclip.get_tokenizer(teacher))
         else:
             temp_t_model, temp_preprocess_train, _ = create_model_and_transforms(teacher,
@@ -245,7 +235,7 @@ def main(args):
                                                                               image_std=args.image_std)
             
             with open(os.path.join(os.getcwd(), 'open_clip/model_configs/'+teacher+'.json'), 'r') as f:
-                args.t_embed_dim = args.t_embed_dim + json.load(f)['embed_dim']
+                args.t_embed_dim.append(json.load(f)['embed_dim'])
             for t_n, t_p in temp_t_model.named_parameters():
                 t_p.requires_grad = False
             checkpoint = torch.load(ckpt_path, map_location='cpu')
