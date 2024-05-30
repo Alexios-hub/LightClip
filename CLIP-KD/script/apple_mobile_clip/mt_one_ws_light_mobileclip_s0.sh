@@ -1,6 +1,6 @@
 cd src
 torchrun --nproc_per_node 2 -m \
-    --master_addr=127.0.0.2 --master_port=29588 \
+    --master_addr=127.0.0.2 --master_port=29566 \
     training.main_kd \
     --save-frequency 1 \
     --zeroshot-frequency 1 \
