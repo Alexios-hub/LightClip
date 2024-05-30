@@ -456,10 +456,10 @@ class MultiClipLoss(nn.Module):
                 all_teacher_all_image_features.append(t_all_image_features)
                 all_teacher_all_text_features.append(t_all_text_features)
 
-            normalized_image_features = F.normalize(image_features, dim=1)
-            normalized_text_features = F.normalize(text_features, dim=1)
-            normalized_all_image_features = F.normalize(all_image_features, dim=1)
-            normalized_all_text_features = F.normalize(all_text_features, dim=1)
+            normalized_image_features = F.normalize(image_features, dim=-1)
+            normalized_text_features = F.normalize(text_features, dim=-1)
+            normalized_all_image_features = F.normalize(all_image_features, dim=-1)
+            normalized_all_text_features = F.normalize(all_text_features, dim=-1)
             
             if self.local_loss:
                 logits_per_image = logit_scale * normalized_image_features @ normalized_all_text_features.T
@@ -490,6 +490,8 @@ class MultiClipLoss(nn.Module):
 
             normalized_image_features = F.normalize(image_features,dim=-1)
             normalized_text_features = F.normalize(text_features,dim=-1)
+            normalized_all_image_features = normalized_image_features
+            normalized_all_text_features = normalized_text_features
             logits_per_image = logit_scale * normalized_image_features @ normalized_text_features.T
             logits_per_text = logit_scale * normalized_text_features @ normalized_image_features.T
 
@@ -515,8 +517,8 @@ class MultiClipLoss(nn.Module):
         normalized_all_image_features = [F.normalize(i, dim=-1) for i in all_image_features_proj]
         normalized_all_text_features = [F.normalize(t, dim=-1) for t in all_text_features_proj]#list
         
-        fd_loss = sum([F.mse_loss(s_all_image_features,t_all_image_features) + F.mse_loss(s_all_text_features,t_all_text_features) for s_all_image_features,t_all_image_features,s_all_text_features,t_all_text_features in zip(normalized_all_image_features, all_teacher_all_image_features,\
-                                                                                                                                                                                                                            normalized_all_text_features, all_teacher_all_text_features)])/len(normalized_all_image_features)
+        fd_loss = torch.stack([F.mse_loss(s_all_image_features,t_all_image_features) + F.mse_loss(s_all_text_features,t_all_text_features) for s_all_image_features,t_all_image_features,s_all_text_features,t_all_text_features in zip(normalized_all_image_features, all_teacher_all_image_features,\
+                                                                                                                                                                                                                            normalized_all_text_features, all_teacher_all_text_features)]).mean()
         
         
             

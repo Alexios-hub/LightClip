@@ -266,73 +266,6 @@ def main(args):
 
             del model.transformer
             model.transformer = LightTransformer(width=model_cfg["text_cfg"]["width"],layers=model_cfg["text_cfg"]["layers"],heads=model_cfg["text_cfg"]["heads"]).to(device=device)
-        elif args.light_version == "mobileclip_s0":
-            mobile_model, _, preprocess = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
-            model = AppleMobileCLIP(**(model.init_params)).to(device)
-            del model.visual
-            model.visual = mobile_model.image_encoder.to(device)
-            model.visual.model.network[7][0] = AttentionBlock(**model.visual.model.network[7][0].init_params).to(device)
-            model.visual.model.network[7][1] = AttentionBlock(**model.visual.model.network[7][1].init_params).to(device)
-            del model.transformer
-            model.transformer = mobile_model.text_encoder.to(device)
-            # preprocess_train = transforms.Compose([
-            #     transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
-            #     transforms.CenterCrop(size=(256, 256)),
-            #     transforms.Lambda(lambda image: image.convert('RGB')),  # Assuming _convert_to_rgb is this
-            #     transforms.ToTensor()
-            #     ])
-            # preprocess_val = transforms.Compose([
-            #     transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
-            #     transforms.CenterCrop(size=(256, 256)),
-            #     transforms.Lambda(lambda image: image.convert('RGB')),  # Assuming _convert_to_rgb is this
-            #     transforms.ToTensor()
-            #     ])
-
-            del mobile_model
-            # Freeze all parameters
-            for param in model.parameters():
-                param.requires_grad = False
-
-            # Unfreeze specific layers
-            for param in model.visual.model.network[7][0].parameters():
-                param.requires_grad = True
-            for param in model.visual.model.network[7][1].parameters():
-                param.requires_grad = True
-
-            # t_mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
-            # t_model = AppleMobileCLIP(**(t_model.init_params)).to(device)
-            # del t_model.visual
-            # t_model.visual = t_mobile_model.image_encoder.to(device)
-
-            # del t_model.transformer
-            # t_model.transformer = t_mobile_model.text_encoder.to(device)
-            # del t_mobile_model
-
-        elif args.light_version == "light_mobileclip_s0":
-            mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
-            model = AppleMobileCLIP(**(model.init_params)).to(device)
-            del model.visual
-            model.visual = mobile_model.image_encoder.to(device)
-            
-            model.visual.model.network[7][0] = ParallelAttentionBlock(**model.visual.model.network[7][0].init_params).to(device)
-            # model.visual.model.network[7][1] = model.visual.model.network[7][0]
-            model.visual.model.network[7][1] = ParallelAttentionBlock(**model.visual.model.network[7][1].init_params).to(device)
-            analyze_model_components(model.visual.model.network)
-
-            del model.transformer
-            model.transformer = mobile_model.text_encoder.to(device)
-            
-            # Freeze all parameters
-            for param in model.parameters():
-                param.requires_grad = False
-
-            # Unfreeze specific layers
-            for param in model.visual.model.network[7][0].parameters():
-                param.requires_grad = True
-            for param in model.visual.model.network[7][1].parameters():
-                param.requires_grad = True
-
-            del mobile_model
 
 
         elif args.light_version == "ws_light_mobileclip_s0":
@@ -351,10 +284,10 @@ def main(args):
 
             del model.transformer
             model.transformer = mobile_model.text_encoder.to(device)
-            # model.transformer.transformer[1] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            # model.transformer.transformer[2] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            # model.transformer.transformer[3] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            # model.transformer.transformer[4] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            model.transformer.transformer[1] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            model.transformer.transformer[2] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            model.transformer.transformer[3] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            model.transformer.transformer[4] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
 
             
             # Freeze all parameters
@@ -367,14 +300,14 @@ def main(args):
             for param in model.visual.model.network[7][1].parameters():
                 param.requires_grad = True
 
-            # for param in model.transformer.transformer[1].parameters():
-            #     param.requires_grad = True
-            # for param in model.transformer.transformer[2].parameters():
-            #     param.requires_grad = True
-            # for param in model.transformer.transformer[3].parameters():
-            #     param.requires_grad = True
-            # for param in model.transformer.transformer[4].parameters():
-            #     param.requires_grad = True
+            for param in model.transformer.transformer[1].parameters():
+                param.requires_grad = True
+            for param in model.transformer.transformer[2].parameters():
+                param.requires_grad = True
+            for param in model.transformer.transformer[3].parameters():
+                param.requires_grad = True
+            for param in model.transformer.transformer[4].parameters():
+                param.requires_grad = True
 
             del mobile_model
         elif args.light_version == "light_txtencoder_mobileclip_s0":
@@ -581,13 +514,17 @@ def main(args):
         # if any(v in data for v in ('val', 'imagenet-val', 'imagenet-v2')) and epoch == start_epoch:
         #     evaluate(model, data, epoch, args, writer)
 
-        if epoch == 5 and (args.light_version == "light_mobileclip_s0" or args.light_version == "ws_light_mobileclip_s0"):#unfreeze modules top of attention block at epoch 5
+        if epoch == 5 and (args.light_version == "ws_light_mobileclip_s0"):#unfreeze modules top of attention block at epoch 5
             if is_master(args):
-                logging.info("unfreeze proj module of image enc.")
-            for param in model.module.visual.model.conv_exp.parameters():
+                # logging.info("unfreeze proj module of image enc.")
+                logging.info("unfreeze all module of clip.")
+            # for param in model.module.visual.model.conv_exp.parameters():
+            #     param.requires_grad = True
+            # for param in model.module.visual.model.head.parameters():
+            #     param.requires_grad = True
+            for param in model.parameters():
                 param.requires_grad = True
-            for param in model.module.visual.model.head.parameters():
-                param.requires_grad = True
+
 
         if epoch == 5 and (args.light_version == "light_txtencoder_mobileclip_s0"):
             for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
