@@ -361,10 +361,10 @@ def main(args):
 
             del model.transformer
             model.transformer = mobile_model.text_encoder.to(device)
-            # model.transformer.transformer[1] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            # model.transformer.transformer[2] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            # model.transformer.transformer[3] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            # model.transformer.transformer[4] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            model.transformer.transformer[1] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            model.transformer.transformer[2] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            model.transformer.transformer[3] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            model.transformer.transformer[4] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
 
             
             # Freeze all parameters
@@ -377,14 +377,14 @@ def main(args):
             for param in model.visual.model.network[7][1].parameters():
                 param.requires_grad = True
 
-            # for param in model.transformer.transformer[1].parameters():
-            #     param.requires_grad = True
-            # for param in model.transformer.transformer[2].parameters():
-            #     param.requires_grad = True
-            # for param in model.transformer.transformer[3].parameters():
-            #     param.requires_grad = True
-            # for param in model.transformer.transformer[4].parameters():
-            #     param.requires_grad = True
+            for param in model.transformer.transformer[1].parameters():
+                param.requires_grad = True
+            for param in model.transformer.transformer[2].parameters():
+                param.requires_grad = True
+            for param in model.transformer.transformer[3].parameters():
+                param.requires_grad = True
+            for param in model.transformer.transformer[4].parameters():
+                param.requires_grad = True
 
             del mobile_model
         elif args.light_version == "light_txtencoder_mobileclip_s0":
@@ -593,10 +593,17 @@ def main(args):
 
         if epoch == 5 and (args.light_version == "light_mobileclip_s0" or args.light_version == "ws_light_mobileclip_s0"):#unfreeze modules top of attention block at epoch 5
             if is_master(args):
-                logging.info("unfreeze proj module of image enc.")
-            for param in model.module.visual.model.conv_exp.parameters():
-                param.requires_grad = True
-            for param in model.module.visual.model.head.parameters():
+            #     logging.info("unfreeze proj module of image and text enc.")
+            # for param in model.module.visual.model.conv_exp.parameters():
+            #     param.requires_grad = True
+            # for param in model.module.visual.model.head.parameters():
+            #     param.requires_grad = True
+
+            # for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
+            #     param.requires_grad = True
+
+                logging.info("unfreeze all parameters.")
+            for param in model.parameters():
                 param.requires_grad = True
 
         if epoch == 5 and (args.light_version == "light_txtencoder_mobileclip_s0"):

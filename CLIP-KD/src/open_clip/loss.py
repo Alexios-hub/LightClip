@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import numpy as np
+import math
 try:
     import torch.distributed.nn
     from torch import distributed as dist
@@ -370,7 +371,23 @@ class KDClipLoss(nn.Module):
         afd_loss = self.args.alpha_afd_loss * afd_loss
         
         return task_loss, ckd_loss, icl_loss, cross_kd_loss, fd_loss, gd_loss, afd_loss
-    
+
+class MyOrthogonal(nn.Module):
+    def __init__(self, ds, dt):
+        super(MyOrthogonal, self).__init__()
+        self.ds = ds
+        self.dt = dt
+        self.weight = nn.Parameter(torch.empty((dt, dt)))
+        torch.nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+
+    def forward(self, x):
+        A = torch.linalg.matrix_exp(self.weight)
+        P = A[:, 0:self.ds]
+        y = F.linear(x, P)
+        return y
+
+
+
 class MultiClipLoss(nn.Module):
     def __init__(
             self,
@@ -392,8 +409,8 @@ class MultiClipLoss(nn.Module):
         self.args = args
 
         if args.t_embed_dim != args.s_embed_dim:
-            self.visual_proj = torch.nn.utils.parametrizations.orthogonal(nn.Linear(args.s_embed_dim, args.t_embed_dim, bias=False))
-            self.text_proj = torch.nn.utils.parametrizations.orthogonal(nn.Linear(args.s_embed_dim, args.t_embed_dim, bias=False))
+            self.visual_proj = MyOrthogonal(args.s_embed_dim, args.t_embed_dim)
+            self.text_proj = MyOrthogonal(args.s_embed_dim, args.t_embed_dim)
         
         if args.alpha_afd_loss > 0.:
             self.visual_fusion_proj = nn.Linear(args.s_embed_dim+args.t_embed_dim, args.s_embed_dim)
