@@ -563,9 +563,6 @@ class MultiClipLoss(nn.Module):
         cross_kd_loss = torch.mean(torch.stack(all_cross_kd_loss))
 
 
-
-        
-        
         if self.args.alpha_gd_loss > 0.:
             with torch.no_grad():
                 t_grad_p_img, t_grad_k_txt = get_grad(t_all_image_features, t_all_text_features, t_logit_scale, labels)

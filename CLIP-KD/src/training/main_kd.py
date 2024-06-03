@@ -288,11 +288,11 @@ def main(args):
             model.transformer.transformer[2] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
             model.transformer.transformer[3] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
             model.transformer.transformer[4] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            #weight sharing
-            del model.transformer.transformer[1].pre_norm_mha
-            model.transformer.transformer[1].pre_norm_mha = model.transformer.transformer[2].pre_norm_mha
-            del model.transformer.transformer[3].pre_norm_mha
-            model.transformer.transformer[3].pre_norm_mha = model.transformer.transformer[4].pre_norm_mha
+            # #weight sharing
+            # del model.transformer.transformer[1].pre_norm_mha
+            # model.transformer.transformer[1].pre_norm_mha = model.transformer.transformer[2].pre_norm_mha
+            # del model.transformer.transformer[3].pre_norm_mha
+            # model.transformer.transformer[3].pre_norm_mha = model.transformer.transformer[4].pre_norm_mha
 
             
             # Freeze all parameters
