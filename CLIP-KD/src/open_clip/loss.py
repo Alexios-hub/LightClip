@@ -414,7 +414,11 @@ class MultiClipLoss(nn.Module):
             self.visual_proj.append(MyOrthogonal(args.s_embed_dim, t_embed_dim))
             self.text_proj.append(MyOrthogonal(args.s_embed_dim, t_embed_dim))
 
-        
+        del self.visual_proj[0]
+        del self.text_proj[0]
+        self.visual_proj.append(nn.Identity())
+        self.text_proj.append(nn.Identity())
+
         if args.alpha_afd_loss > 0.:
             self.visual_fusion_proj = nn.Linear(args.s_embed_dim+args.t_embed_dim, args.s_embed_dim)
             self.text_fusion_proj = nn.Linear(args.s_embed_dim+args.t_embed_dim, args.s_embed_dim)

@@ -107,7 +107,7 @@ def analyze_model_components(model):
 
 def main(args):
     args = parse_args(args)
-    print(f'args:{args}')
+    logging.info("avg_distill")
 
     if torch.cuda.is_available():
         # This enables tf32 on Ampere GPUs which is only 8% slower than
@@ -288,6 +288,11 @@ def main(args):
             model.transformer.transformer[2] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
             model.transformer.transformer[3] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
             model.transformer.transformer[4] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            #weight sharing
+            del model.transformer.transformer[1].pre_norm_mha
+            model.transformer.transformer[1].pre_norm_mha = model.transformer.transformer[2].pre_norm_mha
+            del model.transformer.transformer[3].pre_norm_mha
+            model.transformer.transformer[3].pre_norm_mha = model.transformer.transformer[4].pre_norm_mha
 
             
             # Freeze all parameters
@@ -516,14 +521,18 @@ def main(args):
 
         if epoch == 5 and (args.light_version == "ws_light_mobileclip_s0"):#unfreeze modules top of attention block at epoch 5
             if is_master(args):
-                # logging.info("unfreeze proj module of image enc.")
-                logging.info("unfreeze all module of clip.")
-            # for param in model.module.visual.model.conv_exp.parameters():
-            #     param.requires_grad = True
-            # for param in model.module.visual.model.head.parameters():
-            #     param.requires_grad = True
-            for param in model.parameters():
+                logging.info("unfreeze proj module of image encoder and txt encoder.")
+                # logging.info("unfreeze all module of clip.")
+            for param in model.module.visual.model.conv_exp.parameters():
                 param.requires_grad = True
+            for param in model.module.visual.model.head.parameters():
+                param.requires_grad = True
+            for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
+                param.requires_grad = True
+
+            
+            # for param in model.parameters():
+            #     param.requires_grad = True
 
 
         if epoch == 5 and (args.light_version == "light_txtencoder_mobileclip_s0"):
