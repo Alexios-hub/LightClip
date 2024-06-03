@@ -183,6 +183,9 @@ def train_kd_one_epoch(model, t_model, data, epoch, loss, optimizer, scaler, sch
             scheduler(step)
 
         images, texts = batch
+        if args.dataset_type == 'webdataset':
+            images = [torch.stack([images[b][l] for b in range(len(images))]) for l in range(len(images[0]))]
+            texts = [torch.stack([texts[b][l] for b in range(len(texts))]) for l in range(len(texts[0]))]
         images = [img.to(device=device, dtype=cast_dtype, non_blocking=True) for img in images]
         texts = [txt.to(device=device, non_blocking=True) for txt in texts]
 

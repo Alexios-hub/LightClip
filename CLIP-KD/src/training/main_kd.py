@@ -365,6 +365,11 @@ def main(args):
             model.transformer.transformer[2] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
             model.transformer.transformer[3] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
             model.transformer.transformer[4] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            #weight sharing
+            del model.transformer.transformer[2].pre_norm_mha
+            model.transformer.transformer[2].pre_norm_mha = model.transformer.transformer[1].pre_norm_mha
+            del model.transformer.transformer[3].pre_norm_mha
+            model.transformer.transformer[3].pre_norm_mha = model.transformer.transformer[4].pre_norm_mha
 
             
             # Freeze all parameters
@@ -591,20 +596,20 @@ def main(args):
         # if any(v in data for v in ('val', 'imagenet-val', 'imagenet-v2')) and epoch == start_epoch:
         #     evaluate(model, data, epoch, args, writer)
 
-        if epoch == 5 and (args.light_version == "light_mobileclip_s0" or args.light_version == "ws_light_mobileclip_s0"):#unfreeze modules top of attention block at epoch 5
+        if epoch == 5 and (args.light_version == "ws_light_mobileclip_s0"):#unfreeze modules top of attention block at epoch 5
             if is_master(args):
-            #     logging.info("unfreeze proj module of image and text enc.")
-            # for param in model.module.visual.model.conv_exp.parameters():
-            #     param.requires_grad = True
-            # for param in model.module.visual.model.head.parameters():
-            #     param.requires_grad = True
-
-            # for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
-            #     param.requires_grad = True
-
-                logging.info("unfreeze all parameters.")
-            for param in model.parameters():
+                logging.info("unfreeze proj module of image and text enc.")
+            for param in model.module.visual.model.conv_exp.parameters():
                 param.requires_grad = True
+            for param in model.module.visual.model.head.parameters():
+                param.requires_grad = True
+
+            for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
+                param.requires_grad = True
+
+            #     logging.info("unfreeze all parameters.")
+            # for param in model.parameters():
+            #     param.requires_grad = True
 
         if epoch == 5 and (args.light_version == "light_txtencoder_mobileclip_s0"):
             for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
