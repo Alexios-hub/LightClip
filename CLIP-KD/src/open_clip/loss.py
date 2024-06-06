@@ -414,11 +414,6 @@ class MultiClipLoss(nn.Module):
             self.visual_proj.append(MyOrthogonal(args.s_embed_dim, t_embed_dim))
             self.text_proj.append(MyOrthogonal(args.s_embed_dim, t_embed_dim))
 
-        del self.visual_proj[0]
-        del self.text_proj[0]
-        self.visual_proj.append(nn.Identity())
-        self.text_proj.append(nn.Identity())
-
         if args.alpha_afd_loss > 0.:
             self.visual_fusion_proj = nn.Linear(args.s_embed_dim+args.t_embed_dim, args.s_embed_dim)
             self.text_fusion_proj = nn.Linear(args.s_embed_dim+args.t_embed_dim, args.s_embed_dim)
@@ -540,27 +535,30 @@ class MultiClipLoss(nn.Module):
         gd_loss = torch.tensor(0.).cuda() 
         afd_loss = torch.tensor(0.).cuda() 
         
-        icl_loss = (
-            F.cross_entropy(torch.mean(torch.stack(logits_per_s_image_to_t_text),dim=0), labels) +
-            F.cross_entropy(torch.mean(torch.stack(logits_per_s_text_to_t_image),dim=0), labels)
-            ) / 2
+        if self.args.alpha_icl_loss > 0:
+            icl_loss = (
+                F.cross_entropy(torch.mean(torch.stack(logits_per_s_image_to_t_text),dim=0), labels) +
+                F.cross_entropy(torch.mean(torch.stack(logits_per_s_text_to_t_image),dim=0), labels)
+                ) / 2
         #compute mean KL divergence on each student-teacher pair
-        all_ckd_loss = []
-        all_cross_kd_loss = []
-        for dic,logits_per_s_image_to_t_text,logits_per_s_text_to_t_image in zip(all_teacher_logits,logits_per_s_image_to_t_text,logits_per_s_text_to_t_image):
-            t_logits_per_image = dic['t_logits_per_image']
-            t_logits_per_text = dic['t_logits_per_text']
+        if self.args.alpha_ckd_loss > 0 or self.args.alpha_cross_kd_loss > 0:
+            all_ckd_loss = []
+            all_cross_kd_loss = []
+            for dic,logits_per_s_image_to_t_text,logits_per_s_text_to_t_image in zip(all_teacher_logits,logits_per_s_image_to_t_text,logits_per_s_text_to_t_image):
+                t_logits_per_image = dic['t_logits_per_image']
+                t_logits_per_text = dic['t_logits_per_text']
 
-            ckd_loss = (self.kl_loss(logits_per_image, t_logits_per_image.detach()) +\
-                self.kl_loss(logits_per_text, t_logits_per_text.detach())) / 2
-            all_ckd_loss.append(ckd_loss)
+                ckd_loss = (self.kl_loss(logits_per_image, t_logits_per_image.detach()) +\
+                    self.kl_loss(logits_per_text, t_logits_per_text.detach())) / 2
+                all_ckd_loss.append(ckd_loss)
 
-            cross_kd_loss = (self.kl_loss(logits_per_s_image_to_t_text, t_logits_per_image.detach()) +\
-                self.kl_loss(logits_per_s_text_to_t_image, t_logits_per_text.detach())) / 2
-            all_cross_kd_loss.append(cross_kd_loss)
+                cross_kd_loss = (self.kl_loss(logits_per_s_image_to_t_text, t_logits_per_image.detach()) +\
+                    self.kl_loss(logits_per_s_text_to_t_image, t_logits_per_text.detach())) / 2
+                all_cross_kd_loss.append(cross_kd_loss)
 
-        ckd_loss = torch.mean(torch.stack(all_ckd_loss))
-        cross_kd_loss = torch.mean(torch.stack(all_cross_kd_loss))
+            ckd_loss = torch.mean(torch.stack(all_ckd_loss))
+            cross_kd_loss = torch.mean(torch.stack(all_cross_kd_loss))
+
 
 
         if self.args.alpha_gd_loss > 0.:
