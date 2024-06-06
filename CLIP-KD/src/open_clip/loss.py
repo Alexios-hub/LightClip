@@ -455,10 +455,10 @@ class MultiClipLoss(nn.Module):
                 all_teacher_all_image_features.append(t_all_image_features)
                 all_teacher_all_text_features.append(t_all_text_features)
 
-            normalized_image_features = F.normalize(image_features, dim=1)
-            normalized_text_features = F.normalize(text_features, dim=1)
-            normalized_all_image_features = F.normalize(all_image_features, dim=1)
-            normalized_all_text_features = F.normalize(all_text_features, dim=1)
+            normalized_image_features = F.normalize(image_features, dim=-1)
+            normalized_text_features = F.normalize(text_features, dim=-1)
+            normalized_all_image_features = F.normalize(all_image_features, dim=-1)
+            normalized_all_text_features = F.normalize(all_text_features, dim=-1)
             
             if self.local_loss:
                 logits_per_image = logit_scale * normalized_image_features @ normalized_all_text_features.T
