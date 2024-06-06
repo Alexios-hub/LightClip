@@ -515,8 +515,8 @@ class MultiClipLoss(nn.Module):
 
         normalized_all_image_features = F.normalize(all_image_features, dim=-1)
         normalized_all_text_features = F.normalize(all_text_features, dim=-1)
-        fd_loss = F.mse_loss(normalized_all_image_features, t_all_image_features) +\
-            F.mse_loss(normalized_all_text_features, t_all_text_features)
+        fd_loss = (F.mse_loss(normalized_all_image_features, t_all_image_features) +\
+            F.mse_loss(normalized_all_text_features, t_all_text_features)) / 2
             
         logits_per_s_image_to_t_text = self.cross_logit_scale * normalized_all_image_features @ t_all_text_features.T
         logits_per_s_text_to_t_image = self.cross_logit_scale * normalized_all_text_features @ t_all_image_features.T

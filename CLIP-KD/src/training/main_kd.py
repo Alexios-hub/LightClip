@@ -368,8 +368,8 @@ def main(args):
             #weight sharing
             del model.transformer.transformer[2].pre_norm_mha
             model.transformer.transformer[2].pre_norm_mha = model.transformer.transformer[1].pre_norm_mha
-            del model.transformer.transformer[3].pre_norm_mha
-            model.transformer.transformer[3].pre_norm_mha = model.transformer.transformer[4].pre_norm_mha
+            del model.transformer.transformer[4].pre_norm_mha
+            model.transformer.transformer[4].pre_norm_mha = model.transformer.transformer[3].pre_norm_mha
 
             
             # Freeze all parameters
@@ -449,6 +449,7 @@ def main(args):
         model.set_grad_checkpointing()
 
     if is_master(args):
+        logging.info("concatenate")
         for idx, t_model in enumerate(teacher_models):
             teacher_name = args.teachers[idx]  
             logging.info(f"Teacher Visual Params ({teacher_name}):")

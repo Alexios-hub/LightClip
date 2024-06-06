@@ -1,6 +1,6 @@
 cd src
 torchrun --nproc_per_node 2 -m \
-    --master_addr=127.0.0.2 --master_port=29588 \
+    --master_addr=127.0.0.2 --master_port=29566 \
     training.main_kd \
     --save-frequency 1 \
     --zeroshot-frequency 1 \
@@ -22,7 +22,7 @@ torchrun --nproc_per_node 2 -m \
     --teachers mobileclip_s0\
     --t-model-checkpoint /home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt \
     --logs /home/alex/data/LightClip/CLIP-KD/logs \
-    --alpha_ckd_loss 1. \
+    --alpha_ckd_loss 50. \
     --alpha_icl_loss 1. \
     --alpha_fd_loss 2000. \
     --tag distill-new \
