@@ -229,7 +229,6 @@ def get_dataset_size(shards):
 
 
 def get_imagenet(args, data_path, preprocess_fns):
-    print('preprocess_fns:{preprocess_fns}')
     preprocess_train, preprocess_val = preprocess_fns
     
     dataset = datasets.ImageFolder(data_path, transform=preprocess_val)

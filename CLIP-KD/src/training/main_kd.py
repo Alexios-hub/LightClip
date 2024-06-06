@@ -33,6 +33,7 @@ from open_clip import trace_model, get_tokenizer
 from open_clip import AppleMobileCLIP,CLIPEnsemble
 # from training.data import get_data
 from training.distill_data import get_data_distill
+from training.data import get_data
 from training.distributed import is_master, init_distributed_device, world_info_from_env
 from training.logger import setup_logging
 from training.params import parse_args
@@ -50,9 +51,14 @@ from open_clip.model import CLIPVisionCfg,CLIPTextCfg
 import copy
 import torchvision.transforms as transforms
 
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 apple_mobile_clip_models = ["mobileclip_s0","mobileclip_s1","mobileclip_s2","mobileclip_b","mobileclip_blt"]
 
-def create_apple_mobile_clip_model(device,mobile_model_name = "mobileclip_s0",pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt'):
+
+
+def create_apple_mobile_clip_model(device,precision,mobile_model_name = "mobileclip_s0",pretrained='/home/user/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt'):
     mobile_model, _, _ = mobileclip.create_model_and_transforms(mobile_model_name, pretrained=pretrained)#this preprocess lack convert RGB function
     preprocess = transforms.Compose([
                 transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
@@ -84,6 +90,7 @@ def create_apple_mobile_clip_model(device,mobile_model_name = "mobileclip_s0",pr
     del model.transformer
     model.transformer = mobile_model.text_encoder.to(device)
     del mobile_model
+
     return model,preprocess,preprocess
 
 
@@ -107,7 +114,6 @@ def analyze_model_components(model):
 
 def main(args):
     args = parse_args(args)
-    print(f'args:{args}')
 
     if torch.cuda.is_available():
         # This enables tf32 on Ampere GPUs which is only 8% slower than
@@ -200,8 +206,9 @@ def main(args):
     tokenizers = []
     if args.model in apple_mobile_clip_models:
         model, preprocess_train, preprocess_val = create_apple_mobile_clip_model(device=device,
+                                                                                 precision=args.precision,
                                                                                  mobile_model_name=args.model,
-                                                                                 pretrained=f'/home/alex/data/LightClip/ml-mobileclip/checkpoints/{args.model}.pt')
+                                                                                 pretrained=f'/home/user/data/LightClip/ml-mobileclip/checkpoints/{args.model}.pt')
         args.s_embed_dim = 512
         tokenizers.append(mobileclip.get_tokenizer(args.model))
     else:
@@ -228,8 +235,9 @@ def main(args):
 
         if teacher in apple_mobile_clip_models:
             temp_t_model, temp_preprocess_train, _ = create_apple_mobile_clip_model(device=device,
-                                                                                 mobile_model_name=teacher,
-                                                                                 pretrained=f'/home/alex/data/LightClip/ml-mobileclip/checkpoints/{teacher}.pt')
+                                                                                    precision=args.precision,
+                                                                                    mobile_model_name=teacher,
+                                                                                    pretrained=f'/home/user/data/LightClip/ml-mobileclip/checkpoints/{teacher}.pt')
             args.t_embed_dim = args.t_embed_dim + 512
             tokenizers.append(mobileclip.get_tokenizer(teacher))
         else:
@@ -259,6 +267,10 @@ def main(args):
             tokenizers.append(get_tokenizer(teacher))
 
         temp_t_model.eval()
+
+        for param in temp_t_model.parameters():
+            param.requires_grad = False #freeze teacher param
+
         if is_master(args):
             logging.info(f'Teacher model {teacher} loaded successfully')
         teacher_models.append(temp_t_model)
@@ -277,7 +289,7 @@ def main(args):
             del model.transformer
             model.transformer = LightTransformer(width=model_cfg["text_cfg"]["width"],layers=model_cfg["text_cfg"]["layers"],heads=model_cfg["text_cfg"]["heads"]).to(device=device)
         elif args.light_version == "mobileclip_s0":
-            mobile_model, _, preprocess = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            mobile_model, _, preprocess = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/user/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
             model = AppleMobileCLIP(**(model.init_params)).to(device)
             del model.visual
             model.visual = mobile_model.image_encoder.to(device)
@@ -309,7 +321,7 @@ def main(args):
             for param in model.visual.model.network[7][1].parameters():
                 param.requires_grad = True
 
-            # t_mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            # t_mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/user/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
             # t_model = AppleMobileCLIP(**(t_model.init_params)).to(device)
             # del t_model.visual
             # t_model.visual = t_mobile_model.image_encoder.to(device)
@@ -319,7 +331,7 @@ def main(args):
             # del t_mobile_model
 
         elif args.light_version == "light_mobileclip_s0":
-            mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/user/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
             model = AppleMobileCLIP(**(model.init_params)).to(device)
             del model.visual
             model.visual = mobile_model.image_encoder.to(device)
@@ -346,7 +358,7 @@ def main(args):
 
 
         elif args.light_version == "ws_light_mobileclip_s0":
-            mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/user/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
             model = AppleMobileCLIP(**(model.init_params)).to(device)
             del model.visual
             model.visual = mobile_model.image_encoder.to(device)
@@ -365,6 +377,11 @@ def main(args):
             model.transformer.transformer[2] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
             model.transformer.transformer[3] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
             model.transformer.transformer[4] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            #weight sharing
+            del model.transformer.transformer[2].pre_norm_mha
+            model.transformer.transformer[2].pre_norm_mha = model.transformer.transformer[1].pre_norm_mha
+            del model.transformer.transformer[4].pre_norm_mha
+            model.transformer.transformer[4].pre_norm_mha = model.transformer.transformer[3].pre_norm_mha
 
             
             # Freeze all parameters
@@ -388,7 +405,7 @@ def main(args):
 
             del mobile_model
         elif args.light_version == "light_txtencoder_mobileclip_s0":
-            mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
+            mobile_model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='/home/user/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt')
             model = AppleMobileCLIP(**(model.init_params)).to(device)
             del model.visual
             model.visual = mobile_model.image_encoder.to(device)
@@ -444,6 +461,7 @@ def main(args):
         model.set_grad_checkpointing()
 
     if is_master(args):
+        logging.info("concatenate")
         for idx, t_model in enumerate(teacher_models):
             teacher_name = args.teachers[idx]  
             logging.info(f"Teacher Visual Params ({teacher_name}):")
@@ -516,6 +534,7 @@ def main(args):
 
     # optionally resume from a checkpoint
     start_epoch = 0
+
     if args.resume is not None:
         if os.path.isfile(args.resume):
             checkpoint = torch.load(args.resume, map_location='cpu')
@@ -539,7 +558,7 @@ def main(args):
             logging.info("=> no checkpoint found at '{}'".format(args.resume))
 
     # initialize datasets
-    # data = get_data(args, (preprocess_train, preprocess_val), epoch=start_epoch, tokenizer=get_tokenizer(args.model))
+    # data = get_data(args, (preprocess_train[0], preprocess_val[0]), epoch=start_epoch, tokenizer=tokenizers[0])
     data = get_data_distill(args, (preprocess_train, preprocess_val), epoch=start_epoch, tokenizer=tokenizers)
     assert len(data), 'At least one train or eval dataset must be specified.'
 
@@ -588,23 +607,23 @@ def main(args):
         if is_master(args):
             logging.info(f'Start epoch {epoch}')
 
-        # if any(v in data for v in ('val', 'imagenet-val', 'imagenet-v2')) and epoch == start_epoch:
-        #     evaluate(model, data, epoch, args, writer)
+        if any(v in data for v in ('val', 'imagenet-val', 'imagenet-v2')) and epoch == start_epoch:
+            evaluate(model, data, epoch, args, writer)
 
-        if epoch == 5 and (args.light_version == "light_mobileclip_s0" or args.light_version == "ws_light_mobileclip_s0"):#unfreeze modules top of attention block at epoch 5
+        if epoch == 5 and (args.light_version == "ws_light_mobileclip_s0"):#unfreeze modules top of attention block at epoch 5
             if is_master(args):
-            #     logging.info("unfreeze proj module of image and text enc.")
-            # for param in model.module.visual.model.conv_exp.parameters():
-            #     param.requires_grad = True
-            # for param in model.module.visual.model.head.parameters():
-            #     param.requires_grad = True
-
-            # for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
-            #     param.requires_grad = True
-
-                logging.info("unfreeze all parameters.")
-            for param in model.parameters():
+                logging.info("unfreeze proj module of image and text enc.")
+            for param in model.module.visual.model.conv_exp.parameters():
                 param.requires_grad = True
+            for param in model.module.visual.model.head.parameters():
+                param.requires_grad = True
+
+            for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
+                param.requires_grad = True
+
+            #     logging.info("unfreeze all parameters.")
+            # for param in model.parameters():
+            #     param.requires_grad = True
 
         if epoch == 5 and (args.light_version == "light_txtencoder_mobileclip_s0"):
             for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5

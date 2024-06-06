@@ -17,6 +17,7 @@ from open_clip import ClipLoss, KDClipLoss, get_cast_dtype
 from .distributed import is_master
 from .zero_shot import zero_shot_eval
 from .precision import get_autocast
+import torch
 
 
 class AverageMeter(object):
@@ -183,6 +184,9 @@ def train_kd_one_epoch(model, t_model, data, epoch, loss, optimizer, scaler, sch
             scheduler(step)
 
         images, texts = batch
+        if args.dataset_type == 'webdataset':
+            images = [torch.stack([images[b][l] for b in range(len(images))]) for l in range(len(images[0]))]
+            texts = [torch.stack([texts[b][l] for b in range(len(texts))]) for l in range(len(texts[0]))]
         images = [img.to(device=device, dtype=cast_dtype, non_blocking=True) for img in images]
         texts = [txt.to(device=device, non_blocking=True) for txt in texts]
 

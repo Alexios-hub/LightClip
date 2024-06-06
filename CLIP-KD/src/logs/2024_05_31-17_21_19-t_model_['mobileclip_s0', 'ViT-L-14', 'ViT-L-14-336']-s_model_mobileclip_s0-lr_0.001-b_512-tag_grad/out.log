@@ -1,0 +1,589 @@
+2024-05-31,17:21:19 | INFO | Running in distributed mode with multiple processes. Device: cuda:0.Process (global: 0, local 0), total 2.
+2024-05-31,17:21:24 | INFO | Teacher model mobileclip_s0 loaded successfully
+2024-05-31,17:21:24 | INFO | Loaded ViT-L-14 model config.
+2024-05-31,17:21:28 | INFO | Teacher model ViT-L-14 loaded successfully
+2024-05-31,17:21:28 | INFO | Loaded ViT-L-14-336 model config.
+2024-05-31,17:21:33 | INFO | Teacher model ViT-L-14-336 loaded successfully
+2024-05-31,17:21:33 | INFO | model:AppleMobileCLIP(
+  (visual): MCi(
+    (model): FastViT(
+      (patch_embed): Sequential(
+        (0): MobileOneBlock(
+          (se): Identity()
+          (activation): GELU(approximate='none')
+          (reparam_conv): Conv2d(3, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
+        )
+        (1): MobileOneBlock(
+          (se): Identity()
+          (activation): GELU(approximate='none')
+          (reparam_conv): Conv2d(64, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), groups=64)
+        )
+        (2): MobileOneBlock(
+          (se): Identity()
+          (activation): GELU(approximate='none')
+          (reparam_conv): Conv2d(64, 64, kernel_size=(1, 1), stride=(1, 1))
+        )
+      )
+      (network): ModuleList(
+        (0): Sequential(
+          (0): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=64)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(64, 64, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=64, bias=False)
+                (bn): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(64, 192, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(192, 64, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (1): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=64)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(64, 64, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=64, bias=False)
+                (bn): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(64, 192, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(192, 64, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+        )
+        (1): PatchEmbed(
+          (proj): Sequential(
+            (0): ReparamLargeKernelConv(
+              (activation): GELU(approximate='none')
+              (se): Identity()
+              (lkb_reparam): Conv2d(64, 128, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), groups=64)
+            )
+            (1): MobileOneBlock(
+              (se): Identity()
+              (activation): GELU(approximate='none')
+              (reparam_conv): Conv2d(128, 128, kernel_size=(1, 1), stride=(1, 1))
+            )
+          )
+        )
+        (2): Sequential(
+          (0): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=128)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128, bias=False)
+                (bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(128, 384, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(384, 128, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (1): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=128)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128, bias=False)
+                (bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(128, 384, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(384, 128, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (2): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=128)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128, bias=False)
+                (bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(128, 384, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(384, 128, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (3): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=128)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128, bias=False)
+                (bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(128, 384, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(384, 128, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (4): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=128)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128, bias=False)
+                (bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(128, 384, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(384, 128, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (5): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=128)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128, bias=False)
+                (bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(128, 384, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(384, 128, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+        )
+        (3): PatchEmbed(
+          (proj): Sequential(
+            (0): ReparamLargeKernelConv(
+              (activation): GELU(approximate='none')
+              (se): SEModule(
+                (fc1): Conv2d(256, 64, kernel_size=(1, 1), stride=(1, 1))
+                (bn): Identity()
+                (act): ReLU(inplace=True)
+                (fc2): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1))
+                (gate): Sigmoid()
+              )
+              (lkb_reparam): Conv2d(128, 256, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), groups=128)
+            )
+            (1): MobileOneBlock(
+              (se): Identity()
+              (activation): GELU(approximate='none')
+              (reparam_conv): Conv2d(256, 256, kernel_size=(1, 1), stride=(1, 1))
+            )
+          )
+        )
+        (4): Sequential(
+          (0): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=256)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256, bias=False)
+                (bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(256, 768, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(768, 256, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (1): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=256)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256, bias=False)
+                (bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(256, 768, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(768, 256, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (2): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=256)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256, bias=False)
+                (bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(256, 768, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(768, 256, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (3): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=256)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256, bias=False)
+                (bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(256, 768, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(768, 256, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (4): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=256)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256, bias=False)
+                (bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(256, 768, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(768, 256, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (5): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=256)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256, bias=False)
+                (bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(256, 768, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(768, 256, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (6): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=256)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256, bias=False)
+                (bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(256, 768, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(768, 256, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (7): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=256)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256, bias=False)
+                (bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(256, 768, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(768, 256, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (8): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=256)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256, bias=False)
+                (bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(256, 768, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(768, 256, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (9): RepMixerBlock(
+            (token_mixer): RepMixer(
+              (reparam_conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=256)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256, bias=False)
+                (bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(256, 768, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(768, 256, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+        )
+        (5): PatchEmbed(
+          (proj): Sequential(
+            (0): ReparamLargeKernelConv(
+              (activation): GELU(approximate='none')
+              (se): SEModule(
+                (fc1): Conv2d(512, 128, kernel_size=(1, 1), stride=(1, 1))
+                (bn): Identity()
+                (act): ReLU(inplace=True)
+                (fc2): Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1))
+                (gate): Sigmoid()
+              )
+              (lkb_reparam): Conv2d(256, 512, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), groups=256)
+            )
+            (1): MobileOneBlock(
+              (se): Identity()
+              (activation): GELU(approximate='none')
+              (reparam_conv): Conv2d(512, 512, kernel_size=(1, 1), stride=(1, 1))
+            )
+          )
+        )
+        (6): RepCPE(
+          (reparam_conv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+        )
+        (7): Sequential(
+          (0): AttentionBlock(
+            (norm): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            (token_mixer): MHSA(
+              (qkv): Linear(in_features=512, out_features=1536, bias=False)
+              (attn_drop): Dropout(p=0.0, inplace=False)
+              (proj): Linear(in_features=512, out_features=512, bias=True)
+              (proj_drop): Dropout(p=0.0, inplace=False)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512, bias=False)
+                (bn): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(512, 1536, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(1536, 512, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+          (1): AttentionBlock(
+            (norm): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            (token_mixer): MHSA(
+              (qkv): Linear(in_features=512, out_features=1536, bias=False)
+              (attn_drop): Dropout(p=0.0, inplace=False)
+              (proj): Linear(in_features=512, out_features=512, bias=True)
+              (proj_drop): Dropout(p=0.0, inplace=False)
+            )
+            (convffn): ConvFFN(
+              (conv): Sequential(
+                (conv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512, bias=False)
+                (bn): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+              (fc1): Conv2d(512, 1536, kernel_size=(1, 1), stride=(1, 1))
+              (act): GELU(approximate='none')
+              (fc2): Conv2d(1536, 512, kernel_size=(1, 1), stride=(1, 1))
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path): Identity()
+          )
+        )
+      )
+      (conv_exp): MobileOneBlock(
+        (se): SEBlock(
+          (reduce): Conv2d(1024, 64, kernel_size=(1, 1), stride=(1, 1))
+          (expand): Conv2d(64, 1024, kernel_size=(1, 1), stride=(1, 1))
+        )
+        (activation): GELU(approximate='none')
+        (reparam_conv): Conv2d(512, 1024, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=512)
+      )
+      (head): GlobalPool2D(
+        (pool): GlobalPool()
+      )
+    )
+  )
+  (transformer): TextTransformer(
+    (embedding_layer): Embedding(49408, 512)
+    (positional_embedding): LearnablePositionalEmbedding(num_embeddings=77, embedding_dim=512, padding_idx=None)
+    (embedding_dropout): Dropout(p=0.0, inplace=False)
+    (transformer): ModuleList(
+      (0): RepMixerBlock(
+        (token_mixer): RepMixer(
+          (reparam_conv): Conv2d(512, 512, kernel_size=(1, 11), stride=(1, 1), padding=(0, 5), groups=512)
+        )
+        (convffn): ConvFFN(
+          (conv): Sequential(
+            (conv): Conv2d(512, 512, kernel_size=(1, 11), stride=(1, 1), padding=(0, 5), groups=512, bias=False)
+            (bn): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+          (fc1): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1))
+          (act): GELU(approximate='none')
+          (fc2): Conv2d(2048, 512, kernel_size=(1, 1), stride=(1, 1))
+          (drop): Dropout(p=0.0, inplace=False)
+        )
+        (drop_path): Identity()
+      )
+      (1-4): 4 x TransformerEncoder(embed_dim=512, ffn_dim=2048, dropout=0.0, ffn_dropout=0.0, stochastic_dropout=0.0, attn_fn=MultiHeadAttention, act_fn=GELU, norm_fn=layer_norm_fp32)
+      (5): RepMixerBlock(
+        (token_mixer): RepMixer(
+          (reparam_conv): Conv2d(512, 512, kernel_size=(1, 11), stride=(1, 1), padding=(0, 5), groups=512)
+        )
+        (convffn): ConvFFN(
+          (conv): Sequential(
+            (conv): Conv2d(512, 512, kernel_size=(1, 11), stride=(1, 1), padding=(0, 5), groups=512, bias=False)
+            (bn): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+          (fc1): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1))
+          (act): GELU(approximate='none')
+          (fc2): Conv2d(2048, 512, kernel_size=(1, 1), stride=(1, 1))
+          (drop): Dropout(p=0.0, inplace=False)
+        )
+        (drop_path): Identity()
+      )
+    )
+    (final_layer_norm): LayerNormFP32((512,), eps=1e-05, elementwise_affine=True)
+  )
+)
+2024-05-31,17:21:33 | INFO | Teacher Visual Params (mobileclip_s0):
+2024-05-31,17:21:33 | INFO | 11.356992M
+2024-05-31,17:21:33 | INFO | Teacher Text Params (mobileclip_s0):
+2024-05-31,17:21:33 | INFO | 42.435072M
+2024-05-31,17:21:33 | INFO | Teacher Visual Params (ViT-L-14):
+2024-05-31,17:21:33 | INFO | 303.966208M
+2024-05-31,17:21:33 | INFO | Teacher Text Params (ViT-L-14):
+2024-05-31,17:21:33 | INFO | 85.054464M
+2024-05-31,17:21:33 | INFO | Teacher Visual Params (ViT-L-14-336):
+2024-05-31,17:21:33 | INFO | 304.293888M
+2024-05-31,17:21:33 | INFO | Teacher Text Params (ViT-L-14-336):
+2024-05-31,17:21:33 | INFO | 85.054464M
+2024-05-31,17:21:33 | INFO | Student Visual Params:
+2024-05-31,17:21:33 | INFO | 11.356992M
+2024-05-31,17:21:33 | INFO | Student Text Params:
+2024-05-31,17:21:33 | INFO | 42.435072M
+2024-05-31,17:21:33 | INFO |   alpha_afd_loss: 0.0
+2024-05-31,17:21:33 | INFO |   alpha_ckd_loss: 0.0
+2024-05-31,17:21:33 | INFO |   alpha_cross_kd_loss: 0.0
+2024-05-31,17:21:33 | INFO |   alpha_fd_loss: 0.0
+2024-05-31,17:21:33 | INFO |   alpha_gd_loss: 0.0
+2024-05-31,17:21:33 | INFO |   alpha_icl_loss: 0.0
+2024-05-31,17:21:33 | INFO |   batch_size: 512
+2024-05-31,17:21:33 | INFO |   beta1: 0.9
+2024-05-31,17:21:33 | INFO |   beta2: 0.999
+2024-05-31,17:21:33 | INFO |   checkpoint_path: ./logs/2024_05_31-17_21_19-t_model_['mobileclip_s0', 'ViT-L-14', 'ViT-L-14-336']-s_model_mobileclip_s0-lr_0.001-b_512-tag_grad/checkpoints
+2024-05-31,17:21:33 | INFO |   copy_codebase: False
+2024-05-31,17:21:33 | INFO |   csv_caption_key: title
+2024-05-31,17:21:33 | INFO |   csv_img_key: filepath
+2024-05-31,17:21:33 | INFO |   csv_separator: 	
+2024-05-31,17:21:33 | INFO |   data_root: /home/user/data/LightClip/datasets/cc3m/images/
+2024-05-31,17:21:33 | INFO |   dataset_resampled: False
+2024-05-31,17:21:33 | INFO |   dataset_type: csv
+2024-05-31,17:21:33 | INFO |   ddp_static_graph: False
+2024-05-31,17:21:33 | INFO |   debug: False
+2024-05-31,17:21:33 | INFO |   device: cuda:0
+2024-05-31,17:21:33 | INFO |   dist_backend: nccl
+2024-05-31,17:21:33 | INFO |   dist_url: env://
+2024-05-31,17:21:33 | INFO |   distributed: True
+2024-05-31,17:21:33 | INFO |   epochs: 32
+2024-05-31,17:21:33 | INFO |   eps: 1e-08
+2024-05-31,17:21:33 | INFO |   eval: False
+2024-05-31,17:21:33 | INFO |   force_custom_text: False
+2024-05-31,17:21:33 | INFO |   force_quick_gelu: False
+2024-05-31,17:21:33 | INFO |   gather_with_grad: False
+2024-05-31,17:21:33 | INFO |   grad_checkpointing: False
+2024-05-31,17:21:33 | INFO |   grad_clip_norm: None
+2024-05-31,17:21:33 | INFO |   horovod: False
+2024-05-31,17:21:33 | INFO |   image_mean: None
+2024-05-31,17:21:33 | INFO |   image_std: None
+2024-05-31,17:21:33 | INFO |   imagenet_a: None
+2024-05-31,17:21:33 | INFO |   imagenet_r: None
+2024-05-31,17:21:33 | INFO |   imagenet_sketch: None
+2024-05-31,17:21:33 | INFO |   imagenet_v2: None
+2024-05-31,17:21:33 | INFO |   imagenet_val: /home/user/data/LightClip/datasets/val_images/
+2024-05-31,17:21:33 | INFO |   light: False
+2024-05-31,17:21:33 | INFO |   light_version: light_mobileclip_s0
+2024-05-31,17:21:33 | INFO |   local_loss: False
+2024-05-31,17:21:33 | INFO |   local_rank: 0
+2024-05-31,17:21:33 | INFO |   lock_image: False
+2024-05-31,17:21:33 | INFO |   lock_image_freeze_bn_stats: False
+2024-05-31,17:21:33 | INFO |   lock_image_unlocked_groups: 0
+2024-05-31,17:21:33 | INFO |   lock_text: False
+2024-05-31,17:21:33 | INFO |   lock_text_freeze_layer_norm: False
+2024-05-31,17:21:33 | INFO |   lock_text_unlocked_layers: 0
+2024-05-31,17:21:33 | INFO |   log_level: 20
+2024-05-31,17:21:33 | INFO |   log_local: False
+2024-05-31,17:21:33 | INFO |   log_path: ./logs/2024_05_31-17_21_19-t_model_['mobileclip_s0', 'ViT-L-14', 'ViT-L-14-336']-s_model_mobileclip_s0-lr_0.001-b_512-tag_grad/out.log
+2024-05-31,17:21:33 | INFO |   logs: ./logs/
+2024-05-31,17:21:33 | INFO |   lr: 0.001
+2024-05-31,17:21:33 | INFO |   mask_ratio: 0.0
+2024-05-31,17:21:33 | INFO |   model: mobileclip_s0
+2024-05-31,17:21:33 | INFO |   model_checkpoint: 
+2024-05-31,17:21:33 | INFO |   name: 2024_05_31-17_21_19-t_model_['mobileclip_s0', 'ViT-L-14', 'ViT-L-14-336']-s_model_mobileclip_s0-lr_0.001-b_512-tag_grad
+2024-05-31,17:21:33 | INFO |   no_set_device_rank: False
+2024-05-31,17:21:33 | INFO |   num_per_class: 1
+2024-05-31,17:21:33 | INFO |   precision: amp
+2024-05-31,17:21:33 | INFO |   pretrained: 
+2024-05-31,17:21:33 | INFO |   pretrained_image: False
+2024-05-31,17:21:33 | INFO |   rank: 0
+2024-05-31,17:21:33 | INFO |   report_to: tensorboard
+2024-05-31,17:21:33 | INFO |   resume: None
+2024-05-31,17:21:33 | INFO |   s_embed_dim: 512
+2024-05-31,17:21:33 | INFO |   save_frequency: 1
+2024-05-31,17:21:33 | INFO |   save_most_recent: False
+2024-05-31,17:21:33 | INFO |   seed: 0
+2024-05-31,17:21:33 | INFO |   skip_scheduler: False
+2024-05-31,17:21:33 | INFO |   sup_batch_size: 64
+2024-05-31,17:21:33 | INFO |   t_embed_dim: 2048
+2024-05-31,17:21:33 | INFO |   t_eval: False
+2024-05-31,17:21:33 | INFO |   t_model_checkpoint: ['/home/user/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt', '/home/user/data/LightClip/CLIP-KD/pretrained_models/CLIP-ViT-L-14-DataComp.XL-s13B-b90K/open_clip_pytorch_model.bin', '/home/user/data/LightClip/CLIP-KD/pretrained_models/vit_large_patch14_clip_336.openai/open_clip_pytorch_model.bin']
+2024-05-31,17:21:33 | INFO |   tag: grad
+2024-05-31,17:21:33 | INFO |   teachers: ['mobileclip_s0', 'ViT-L-14', 'ViT-L-14-336']
+2024-05-31,17:21:33 | INFO |   tensorboard: True
+2024-05-31,17:21:33 | INFO |   tensorboard_path: ./logs/2024_05_31-17_21_19-t_model_['mobileclip_s0', 'ViT-L-14', 'ViT-L-14-336']-s_model_mobileclip_s0-lr_0.001-b_512-tag_grad/tensorboard
+2024-05-31,17:21:33 | INFO |   torchscript: False
+2024-05-31,17:21:33 | INFO |   trace: False
+2024-05-31,17:21:33 | INFO |   train_data: /home/user/data/LightClip/datasets/cc3m/cc3m/Train_GCC-training.csv
+2024-05-31,17:21:33 | INFO |   train_num_samples: None
+2024-05-31,17:21:33 | INFO |   use_bn_sync: False
+2024-05-31,17:21:33 | INFO |   val_data: /home/user/data/LightClip/datasets/cc3m/cc3m/Validation_GCC-1.1.0-Validation.csv
+2024-05-31,17:21:33 | INFO |   val_data_root: /home/user/data/LightClip/datasets/cc3m/images/
+2024-05-31,17:21:33 | INFO |   val_dataset_type: csv
+2024-05-31,17:21:33 | INFO |   val_frequency: 1
+2024-05-31,17:21:33 | INFO |   val_num_samples: None
+2024-05-31,17:21:33 | INFO |   vl_batch_size: 64
+2024-05-31,17:21:33 | INFO |   wandb: False
+2024-05-31,17:21:33 | INFO |   wandb_notes: 
+2024-05-31,17:21:33 | INFO |   warmup: 10000
+2024-05-31,17:21:33 | INFO |   wd: 0.1
+2024-05-31,17:21:33 | INFO |   workers: 8
+2024-05-31,17:21:33 | INFO |   world_size: 2
+2024-05-31,17:21:33 | INFO |   zeroshot_frequency: 1
