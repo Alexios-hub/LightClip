@@ -231,7 +231,6 @@ def get_dataset_size(shards):
 
 
 def get_imagenet(args, data_path, preprocess_fns):
-    print('preprocess_fns:{preprocess_fns}')
     preprocess_train, preprocess_val = preprocess_fns
     
     dataset = datasets.ImageFolder(data_path, transform=preprocess_val)
@@ -772,6 +771,7 @@ def get_dataset_fn(data_path, dataset_type):
     
 
 def get_data_distill(args, preprocess_fns, epoch=0, tokenizer=None):
+    print(f'preprocess_fns:{preprocess_fns}')
     preprocess_train, preprocess_val = preprocess_fns
     assert isinstance(preprocess_train,list)
     assert isinstance(preprocess_val,list)

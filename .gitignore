@@ -4,4 +4,8 @@ CLIP-KD/.vscode/
 datasets/
 CLIP-KD/datasets/
 ml-mobileclip/checkpoints/
+<<<<<<< HEAD
+=======
+logs/
+>>>>>>> 553f28a1a4bfc1affc17abead5debde17dad66ff
 __pycache__/

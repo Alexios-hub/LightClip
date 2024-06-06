@@ -17,6 +17,7 @@ from open_clip import ClipLoss, KDClipLoss, get_cast_dtype
 from .distributed import is_master
 from .zero_shot import zero_shot_eval
 from .precision import get_autocast
+import torch
 
 
 class AverageMeter(object):
