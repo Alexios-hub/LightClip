@@ -5,3 +5,4 @@ datasets/
 CLIP-KD/datasets/
 ml-mobileclip/checkpoints/
 logs/
+__pycache__/
