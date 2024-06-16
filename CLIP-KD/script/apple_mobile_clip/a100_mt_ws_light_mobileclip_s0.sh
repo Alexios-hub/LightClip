@@ -13,12 +13,11 @@ torchrun --nproc_per_node 2 -m \
     --batch-size=512 \
     --lr=1e-5 \
     --wd=0.1 \
-    --epochs 40 \
+    --epochs 8 \
     --workers=8 \
     --model mobileclip_s0 \
     --teachers ViT-L-14 ViT-L-14-336\
     --t-model-checkpoint /home/user/data/LightClip/CLIP-KD/pretrained_models/CLIP-ViT-L-14-DataComp.XL-s13B-b90K/open_clip_pytorch_model.bin /home/user/data/LightClip/CLIP-KD/pretrained_models/vit_large_patch14_clip_336.openai/open_clip_pytorch_model.bin\
-    --resume /home/user/data/LightClip/CLIP-KD/logs/model_on_cc3m_ws/checkpoints/epoch_32.pt \
     --logs /home/user/data/LightClip/CLIP-KD/logs \
     --alpha_ckd_loss 1. \
     --alpha_icl_loss 0. \

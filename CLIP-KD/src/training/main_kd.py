@@ -31,7 +31,7 @@ except ImportError:
 from open_clip import create_model_and_transforms
 from open_clip import trace_model, get_tokenizer
 from open_clip import AppleMobileCLIP,CLIPEnsemble
-# from training.data import get_data
+from training.data import get_data
 from training.distill_data import get_data_distill
 from training.distributed import is_master, init_distributed_device, world_info_from_env
 from training.logger import setup_logging
@@ -402,7 +402,8 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
 
     
-    loss = MultiClipLoss(
+    args.t_embed_dim =  args.s_embed_dim
+    loss = KDClipLoss(
         args=args,
         local_loss=args.local_loss,
         gather_with_grad=args.gather_with_grad,
@@ -444,6 +445,7 @@ def main(args):
 
     # optionally resume from a checkpoint
     start_epoch = 0
+
     if args.resume is not None:
         if os.path.isfile(args.resume):
             checkpoint = torch.load(args.resume, map_location='cpu')
@@ -467,8 +469,8 @@ def main(args):
             logging.info("=> no checkpoint found at '{}'".format(args.resume))
 
     # initialize datasets
-    # data = get_data(args, (preprocess_train, preprocess_val), epoch=start_epoch, tokenizer=get_tokenizer(args.model))
-    data = get_data_distill(args, (preprocess_train, preprocess_val), epoch=start_epoch, tokenizer=tokenizers)
+    data = get_data(args, (preprocess_train[0], preprocess_val[0]), epoch=start_epoch, tokenizer=tokenizers[0])
+    # data = get_data_distill(args, (preprocess_train, preprocess_val), epoch=start_epoch, tokenizer=tokenizers)
     assert len(data), 'At least one train or eval dataset must be specified.'
 
     
@@ -519,7 +521,7 @@ def main(args):
         if any(v in data for v in ('val', 'imagenet-val', 'imagenet-v2')) and epoch == start_epoch:
             evaluate(model, data, epoch, args, writer)
 
-        if epoch == 0 and (args.light_version == "ws_light_mobileclip_s0"):#unfreeze modules top of attention block at epoch 5
+        if epoch == 5 and (args.light_version == "ws_light_mobileclip_s0"):#unfreeze modules top of attention block at epoch 5
             if is_master(args):
                 logging.info("unfreeze proj module of image encoder and txt encoder.")
                 # logging.info("unfreeze all module of clip.")
