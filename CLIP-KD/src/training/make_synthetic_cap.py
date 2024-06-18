@@ -200,8 +200,9 @@ from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor
 #     print('done')
 
 
-def process(model_name, pretrained, device_id, idx, url, output, maxcount=999999999, batch_size=760):
-    torch.cuda.set_device(device_id)  # 明确设置进程的GPU
+def process(model_name, pretrained, device_id, idx, url, output, maxcount=999999999, batch_size=345):
+    device_id = device_id + 2
+    torch.cuda.set_device(device_id)  # 明确设置进程的GPU,在407-1上要+2
     device = torch.device(f'cuda:{device_id}')
     model, _, base_transform = open_clip.create_model_and_transforms(
         model_name=model_name,
@@ -252,10 +253,10 @@ def aug_syn_cap():
     pretrained = "mscoco_finetuned_laion2B-s13B-b90k"
     num_gpus = 2  # 有两个GPU
     models_per_gpu = 1  # 每个GPU运行1个模型实例
-    input_shards = braceexpand("{00306..01242}")
-    output_shards = braceexpand("{00306..01242}")
-    inputs = [f"/home/user/data/cc12m/{shard}.tar" for shard in input_shards]
-    outputs = [f"/home/user/data/cc12m_sync/{shard}.tar" for shard in output_shards]
+    input_shards = braceexpand("{01121..01242}")
+    output_shards = braceexpand("{01121..01242}")
+    inputs = [f"/home/alex/data/cc12m/{shard}.tar" for shard in input_shards]
+    outputs = [f"/home/alex/data/cc12m_sync/{shard}.tar" for shard in output_shards]
     
     with ProcessPoolExecutor(max_workers=num_gpus * models_per_gpu) as executor:
         futures = []
