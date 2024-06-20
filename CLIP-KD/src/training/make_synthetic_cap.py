@@ -17,7 +17,7 @@ from braceexpand import braceexpand
 from concurrent.futures import ProcessPoolExecutor
 
 
-def process(model_name, pretrained, device_id, idx, url, output, maxcount=999999999, batch_size=600):
+def process(model_name, pretrained, device_id, idx, url, output, maxcount=999999999, batch_size=400):
     torch.cuda.set_device(device_id)  # 明确设置进程的GPU
     device = torch.device(f'cuda:{device_id}')
     model, _, base_transform = open_clip.create_model_and_transforms(
@@ -69,8 +69,8 @@ def aug_syn_cap():
     pretrained = "mscoco_finetuned_laion2B-s13B-b90k"
     num_gpus = 2  # 有两个GPU
     models_per_gpu = 1  # 每个GPU运行1个模型实例
-    input_shards = braceexpand("{01129..01133}")
-    output_shards = braceexpand("{01129..01133}")
+    input_shards = braceexpand("{00125..00127}")
+    output_shards = braceexpand("{00125..00127}")
     inputs = [f"/home/user/data/cc12m/{shard}.tar" for shard in input_shards]
     outputs = [f"/home/user/data/cc12m_sync/{shard}.tar" for shard in output_shards]
     
