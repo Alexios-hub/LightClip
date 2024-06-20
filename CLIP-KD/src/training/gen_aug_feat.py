@@ -79,7 +79,7 @@ def process(device_id, idx, url, output, maxcount=999999999, batch_size=600):
     
     datacomp_clip, datacomp_preprocess_train, datacomp_preprocess_val = create_model_and_transforms(
         model_name="ViT-L-14",
-        pretrained='/home/user/data/LightClip/CLIP-KD/pretrained_models/CLIP-ViT-L-14-DataComp.XL-s13B-b90K/open_clip_pytorch_model.bin',
+        pretrained='/home/alex/data/LightClip/CLIP-KD/pretrained_models/CLIP-ViT-L-14-DataComp.XL-s13B-b90K/open_clip_pytorch_model.bin',
         precision="bf16"
     )
     datacomp_clip = datacomp_clip.to(device)
@@ -152,10 +152,10 @@ def process(device_id, idx, url, output, maxcount=999999999, batch_size=600):
 def dr_aug_emb():
     num_gpus = 2  # 有两个GPU
     models_per_gpu = 1  # 每个GPU运行1个模型实例
-    input_shards = braceexpand("{00000..00830}")#{00000..00830},{00831..01242}
-    output_shards = braceexpand("{00000..00830}")
-    inputs = [f"/home/user/data/cc12m_sync/{shard}.tar" for shard in input_shards]
-    outputs = [f"/home/user/data/cc12m_dr/{shard}.tar" for shard in output_shards]
+    input_shards = braceexpand("{01048..01242}")#{00000..00830},{00831..01242}
+    output_shards = braceexpand("{01048..01242}")
+    inputs = [f"/home/alex/data/cc12m_sync/{shard}.tar" for shard in input_shards]
+    outputs = [f"/home/alex/data/cc12m_dr/{shard}.tar" for shard in output_shards]
 
 
     with ProcessPoolExecutor(max_workers=num_gpus * models_per_gpu) as executor:
@@ -163,7 +163,7 @@ def dr_aug_emb():
         for i in range(len(inputs)):
             device_id = i % num_gpus
             proc_idx = i % models_per_gpu
-            futures.append(executor.submit(process, device_id, proc_idx, inputs[i], outputs[i], batch_size=600))
+            futures.append(executor.submit(process, device_id+2, proc_idx, inputs[i], outputs[i], batch_size=300))
         
         for future in tqdm(futures, desc="Total Progress"):
             future.result()
