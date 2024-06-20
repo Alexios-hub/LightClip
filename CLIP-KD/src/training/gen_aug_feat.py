@@ -65,7 +65,7 @@ class myRandomResizedCrop(RandomResizedCrop):
 
     
 
-def process(device_id, idx, url, output, maxcount=999999999, batch_size=600):
+def process(device_id, idx, url, output, maxcount=999999999, batch_size=400):
     torch.cuda.set_device(device_id)
     device = torch.device(f'cuda:{device_id}')
     
@@ -152,10 +152,17 @@ def process(device_id, idx, url, output, maxcount=999999999, batch_size=600):
 def dr_aug_emb():
     num_gpus = 2  # 有两个GPU
     models_per_gpu = 1  # 每个GPU运行1个模型实例
+<<<<<<< HEAD
     input_shards = braceexpand("{01048..01242}")#{00000..00830},{00831..01242}
     output_shards = braceexpand("{01048..01242}")
     inputs = [f"/home/alex/data/cc12m_sync/{shard}.tar" for shard in input_shards]
     outputs = [f"/home/alex/data/cc12m_dr/{shard}.tar" for shard in output_shards]
+=======
+    input_shards = braceexpand("{00255..00256}")#{00000..00830},{00831..01242}
+    output_shards = braceexpand("{00255..00256}")
+    inputs = [f"/home/user/data/cc12m_sync/{shard}.tar" for shard in input_shards]
+    outputs = [f"/home/user/data/cc12m_dr/{shard}.tar" for shard in output_shards]
+>>>>>>> 0e34b27c5454d7fe6fde60413262ab60f082e63c
 
 
     with ProcessPoolExecutor(max_workers=num_gpus * models_per_gpu) as executor:
