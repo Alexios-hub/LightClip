@@ -152,6 +152,191 @@ def train_one_epoch(model, data, epoch, optimizer, scaler, scheduler, args, tb_w
             data_time_m.reset()
     # end for
 
+def train_kd_dr_one_epoch(model, data, epoch, loss, optimizer, scaler, scheduler, args, tb_writer=None):
+    device = torch.device(args.device)
+    autocast = get_autocast(args.precision)
+    cast_dtype = get_cast_dtype(args.precision)
+
+    model.train()
+    
+    data['train'].set_epoch(epoch)  # set epoch in process safe manner via sampler or shared_epoch
+    dataloader = data['train'].dataloader
+    num_batches_per_epoch = dataloader.num_batches
+    sample_digits = math.ceil(math.log(dataloader.num_samples + 1, 10))
+
+    loss_m = AverageMeter()
+    loss_task = AverageMeter()
+    loss_icl = AverageMeter()
+    loss_ckd = AverageMeter()
+    loss_cross_kd  = AverageMeter()
+    loss_fd = AverageMeter()
+    loss_gd = AverageMeter()
+    loss_afd = AverageMeter()
+    batch_time_m = AverageMeter()
+    data_time_m = AverageMeter()
+    end = time.time()
+    # for i, batch in enumerate(dataloader):
+    #     step = num_batches_per_epoch * epoch + i
+        
+    #     if not args.skip_scheduler:
+    #         scheduler(step)
+
+    #     images, texts, t_image_emb, t_text_emb = batch
+
+    #     images = images.to(device=device, dtype=cast_dtype, non_blocking=True)
+    #     texts = texts.to(device=device, non_blocking=True)#shape是[B,3,L]
+    #     t_image_emb = t_image_emb.to(device=device, dtype=cast_dtype, non_blocking=True).detach()#shape是[B,768x2]
+    #     t_text_emb = t_text_emb.to(device=device, non_blocking=True).detach()#shape是[B,3,768x2]
+    #     t_text_emb = t_text_emb.permute(1,0,2)#[3,B,768x2]
+    #     texts = texts.permute(1,0,2)#shape是[3,B,L]
+    #     N,B,L = texts.shape[0], texts.shape[1], texts.shape[2]
+    #     texts = texts.reshape(N*B,L)
+
+    #     data_time_m.update(time.time() - end)
+    #     optimizer.zero_grad()
+    #     with autocast():
+
+    #         image_features, text_features, logit_scale = model(images, texts, distill=True, mask_ratio=args.mask_ratio)
+    #         text_features = text_features.reshape(N,B,-1)
+    #         text_features1, text_features2, text_features3 = text_features.contiguous().chunk(N,dim=0)
+    #         text_features1, text_features2, text_features3 = text_features1.squeeze(), text_features2.squeeze(), text_features3.squeeze()
+
+    #         t_text_emb1, t_text_emb2, t_text_emb3 = t_text_emb.contiguous().chunk(N,dim=0)
+    #         t_text_emb1, t_text_emb2, t_text_emb3 = t_text_emb1.squeeze(), t_text_emb2.squeeze(), t_text_emb3.squeeze()
+
+    #         task_loss1, ckd_loss1, icl_loss1, cross_kd_loss1, fd_loss1 = loss(image_features, text_features1, logit_scale, t_image_emb, t_text_emb1, args.t_logit_scale)
+    #         task_loss2, ckd_loss2, icl_loss2, cross_kd_loss2, fd_loss2 = loss(image_features, text_features2, logit_scale, t_image_emb, t_text_emb2, args.t_logit_scale)
+    #         task_loss3, ckd_loss3, icl_loss3, cross_kd_loss3, fd_loss3 = loss(image_features, text_features3, logit_scale, t_image_emb, t_text_emb3, args.t_logit_scale)
+
+    #         task_loss = task_loss1 + task_loss2 + task_loss3
+    #         ckd_loss = ckd_loss1 + ckd_loss2 + ckd_loss3
+    #         icl_loss = icl_loss1 + icl_loss2 + icl_loss3
+    #         cross_kd_loss = cross_kd_loss1 + cross_kd_loss2 + cross_kd_loss3
+    #         fd_loss = fd_loss1 + fd_loss2 + fd_loss3
+
+    #         total_loss = task_loss + ckd_loss + icl_loss + cross_kd_loss + fd_loss
+    for i, batch in enumerate(dataloader):
+        step = num_batches_per_epoch * epoch + i
+    
+        if not args.skip_scheduler:
+            scheduler(step)
+
+        images, texts, t_image_emb, t_text_emb = batch
+
+        images = images.to(device=device, dtype=cast_dtype, non_blocking=True)
+        texts = texts.to(device=device, non_blocking=True)#shape是[B,3,L]
+        t_image_emb = t_image_emb.to(device=device, dtype=cast_dtype, non_blocking=True).detach()#shape是[B,768x2]
+        t_text_emb = t_text_emb.to(device=device, non_blocking=True).detach()#shape是[B,3,768x2]
+        t_text_emb = t_text_emb.permute(1,0,2)#[3,B,768x2]
+        texts = texts.permute(1,0,2)#shape是[3,B,L]
+        N,B,L = texts.shape[0], texts.shape[1], texts.shape[2]
+        texts = texts.reshape(N*B,L)
+
+        data_time_m.update(time.time() - end)
+        optimizer.zero_grad()
+        with autocast():
+            image_features, text_features, logit_scale = model(images, texts, distill=True, mask_ratio=args.mask_ratio)
+        
+            # Reshape and split text_features for processing
+            text_features = text_features.view(-1, B, text_features.size(-1)).chunk(3, dim=0)
+            text_features = tuple(x.squeeze() for x in text_features)
+
+            # Chunk and prepare teacher embeddings
+            t_text_emb = t_text_emb.chunk(3, dim=0)
+            t_text_emb = tuple(x.squeeze() for x in t_text_emb)
+
+            # Compute losses for each text feature set
+            losses = [loss(image_features, tf, logit_scale, t_image_emb, tte, args.t_logit_scale) for tf, tte in zip(text_features, t_text_emb)]
+        
+            # Sum individual losses
+            task_loss, ckd_loss, icl_loss, cross_kd_loss, fd_loss = map(sum, zip(*losses))
+            task_loss = task_loss/3
+            ckd_loss = ckd_loss/3
+            icl_loss = icl_loss/3
+            cross_kd_loss = cross_kd_loss/3
+            fd_loss = fd_loss/3
+            total_loss = task_loss + ckd_loss + icl_loss + cross_kd_loss + fd_loss
+
+        # Backpropagation would go here
+
+        if scaler is not None:
+            scaler.scale(total_loss).backward()
+            if args.horovod:
+                optimizer.synchronize()
+                scaler.unscale_(optimizer)
+                if args.grad_clip_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip_norm, norm_type=2.0)
+                with optimizer.skip_synchronize():
+                    scaler.step(optimizer)
+            else:
+                if args.grad_clip_norm is not None:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip_norm, norm_type=2.0)
+                scaler.step(optimizer)
+            scaler.update()
+        else:
+            total_loss.backward()
+            if args.grad_clip_norm is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip_norm, norm_type=2.0)
+            optimizer.step()
+
+        # Note: we clamp to 4.6052 = ln(100), as in the original paper.
+        with torch.no_grad():
+            unwrap_model(model).logit_scale.clamp_(0, math.log(100))
+
+        batch_time_m.update(time.time() - end)
+        end = time.time()
+        batch_count = i + 1
+        if is_master(args) and (i % 100 == 0 or batch_count == num_batches_per_epoch):
+            batch_size = len(images)
+            num_samples = batch_count * batch_size * args.world_size
+            samples_per_epoch = dataloader.num_samples
+            percent_complete = 100.0 * batch_count / num_batches_per_epoch
+
+            # NOTE loss is coarsely sampled, just master node and per log update
+            loss_m.update(total_loss.item(), batch_size)
+            loss_task.update(task_loss.item(), batch_size)
+            loss_icl.update(icl_loss.item(), batch_size)
+            loss_ckd.update(ckd_loss.item(), batch_size)
+            loss_cross_kd.update(cross_kd_loss.item(), batch_size)
+            loss_fd.update(fd_loss.item(), batch_size)
+            logit_scale_scalar = logit_scale.item()
+            logging.info(
+                f"Train Epoch: {epoch} [{num_samples:>{sample_digits}}/{samples_per_epoch} ({percent_complete:.0f}%)] "
+                f"Total Loss: {loss_m.val:#.5g} ({loss_m.avg:#.4g}) "
+                f"Task Loss: {loss_task.val:#.5g} ({loss_task.avg:#.4g}) "
+                f"ICL Loss: {loss_icl.val:#.5g} ({loss_icl.avg:#.4g}) "
+                f"CKD Loss: {loss_ckd.val:#.5g} ({loss_ckd.avg:#.4g}) "
+                f"Cross KD Loss: {loss_cross_kd.val:#.5g} ({loss_cross_kd.avg:#.4g}) "
+                f"FD Loss: {loss_fd.val:#.5g} ({loss_fd.avg:#.4g}) "
+                f"GD Loss: {loss_gd.val:#.5g} ({loss_gd.avg:#.4g}) "
+                f"AFD Loss: {loss_afd.val:#.5g} ({loss_afd.avg:#.4g}) "
+                f"Data (t): {data_time_m.avg:.3f} "
+                f"Batch (t): {batch_time_m.avg:.3f}, {args.batch_size*args.world_size / batch_time_m.val:#g}/s "
+                f"LR: {optimizer.param_groups[0]['lr']:5f} "
+                f"Logit Scale: {logit_scale_scalar:.3f}"
+            )
+
+            # Save train loss / etc. Using non avg meter values as loggers have their own smoothing
+            log_data = {
+                "loss": loss_m.val,
+                "data_time": data_time_m.val,
+                "batch_time": batch_time_m.val,
+                "samples_per_scond": args.batch_size*args.world_size / batch_time_m.val,
+                "scale":  logit_scale_scalar,
+                "lr": optimizer.param_groups[0]["lr"]
+            }
+            for name, val in log_data.items():
+                name = "train/" + name
+                if tb_writer is not None:
+                    tb_writer.add_scalar(name, val, step)
+                if args.wandb:
+                    assert wandb is not None, 'Please install wandb.'
+                    wandb.log({name: val, 'step': step})
+
+            # resetting batch / data time meters per log window
+            batch_time_m.reset()
+            data_time_m.reset()
     
 def train_kd_one_epoch(model, t_model, data, epoch, loss, optimizer, scaler, scheduler, args, tb_writer=None):
     device = torch.device(args.device)

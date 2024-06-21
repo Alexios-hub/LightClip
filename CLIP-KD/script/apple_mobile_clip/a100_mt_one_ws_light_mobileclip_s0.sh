@@ -43,7 +43,7 @@ torchrun --nproc_per_node 2 -m \
     --csv-caption-key title \
     --imagenet-val=/home/user/data/LightClip/datasets/val_images/ \
     --warmup 10000 \
-    --batch-size=512 \
+    --batch-size=1024 \
     --lr=1e-4 \
     --wd=0.1 \
     --epochs 32 \

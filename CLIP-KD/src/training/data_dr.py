@@ -31,6 +31,7 @@ from open_clip.tokenizer import HFTokenizer
 from .imagenet_zeroshot_data import openai_imagenet_template
 from .class_sampler import MPerClassSampler
 from training.image_aug import random_resized_crop, rand_augment
+import random
 
 class CsvDataset(Dataset):
     def __init__(self, data_root, input_filename, transforms, img_key, caption_key, sep="\t", tokenizer=None):
@@ -452,22 +453,44 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
         image = aug_img(image=sample["image"],params=params)
         image = preprocess(image)
 
-        #preprocess text and synthetic text
-        texts = sample["text"]
-        texts = [texts] if not isinstance(texts, list) else texts
+        #Preprocess text and synthetic text
+        text = sample["text"]
+        text = [text] if not isinstance(text, list) else text
         syn_texts = sample["syn_caps.json"]
-        all_texts = texts
+        all_texts = text + syn_texts
+        text_indices = random.sample(range(len(all_texts)), 3)
+        selected_texts = [all_texts[i] for i in text_indices]
+        selected_texts = tokenizer(selected_texts)
 
+        #Preprocess embeddings
+        image_emb = sample["pth"]["image_emb"][aug_idx]
+        text_emb = torch.stack([sample["pth"]["text_emb"][i] for i in text_indices])
+        if not isinstance(image_emb, torch.Tensor):
+            image_emb = torch.tensor(image_emb)
+        image_emb = image_emb.type(torch.float32)
+        text_emb = text_emb.type(torch.float32)
 
+        return{
+            'image': image,
+            'text': selected_texts,
+            'image_emb':image_emb,
+            'text_emb':text_emb
+        }
 
 
 
     pipeline.extend([
         wds.select(filter_no_caption_or_no_image),
         wds.decode("pilrgb", handler=log_and_continue),
-        wds.rename(image="jpg;png", text="txt", syn_caps="syn_caps.json", paug="paug.json", t_emb="pth"),
-        wds.map_dict(image=preprocess_img, text=lambda text: tokenizer(text)[0]),
-        wds.to_tuple("image", "text"),
+        wds.rename(image="jpg;png", text="txt"),
+        wds.map(
+            lambda sample: preprocess_dr(
+                sample=sample,
+                preprocess=preprocess_img,
+                tokenizer=tokenizer
+            )
+        ),
+        wds.to_tuple("image", "text", "image_emb", "text_emb"),
         wds.batched(args.batch_size, partial=not is_train),
     ])
 
