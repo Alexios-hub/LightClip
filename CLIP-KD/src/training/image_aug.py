@@ -24,7 +24,7 @@ class myRandAugment(RandAugment):
             elif fill is not None:
                 fill = [float(f) for f in fill]
         op_meta = self._augmentation_space(self.num_magnitude_bins, (height, width))
-        for param in range(len(params)):
+        for param in params:
             op_index = param[0]
             op_name = list(op_meta.keys())[op_index]
             magnitude = param[1]

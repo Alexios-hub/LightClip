@@ -430,6 +430,18 @@ def parse_args(args):
         action="store_true",
         help="evaluate teacher before training."
     )
+    parser.add_argument(
+        "--t_logit_scale",
+        default=4.6052
+    )
+    parser.add_argument(
+        "--t_embed_dim",
+        default=768
+    )
+    parser.add_argument(
+        '--s_embed_dim',
+        default=512
+    )
 
 
     args = parser.parse_args(args)

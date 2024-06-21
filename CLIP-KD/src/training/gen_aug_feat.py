@@ -156,17 +156,18 @@ def dr_aug_emb():
     output_shards = braceexpand("{00255..00256}")
     inputs = [f"/home/user/data/cc12m_sync/{shard}.tar" for shard in input_shards]
     outputs = [f"/home/user/data/cc12m_dr/{shard}.tar" for shard in output_shards]
+    process(0, 0, '/home/user/data/cc12m_sync/00128.tar', '/home/user/data/cc12m_dr/00128.tar', batch_size=600)
 
 
-    with ProcessPoolExecutor(max_workers=num_gpus * models_per_gpu) as executor:
-        futures = []
-        for i in range(len(inputs)):
-            device_id = i % num_gpus
-            proc_idx = i % models_per_gpu
-            futures.append(executor.submit(process, device_id, proc_idx, inputs[i], outputs[i], batch_size=600))
+    # with ProcessPoolExecutor(max_workers=num_gpus * models_per_gpu) as executor:
+    #     futures = []
+    #     for i in range(len(inputs)):
+    #         device_id = i % num_gpus
+    #         proc_idx = i % models_per_gpu
+    #         futures.append(executor.submit(process, device_id, proc_idx, inputs[i], outputs[i], batch_size=600))
         
-        for future in tqdm(futures, desc="Total Progress"):
-            future.result()
+    #     for future in tqdm(futures, desc="Total Progress"):
+    #         future.result()
 
     print('done')
 
