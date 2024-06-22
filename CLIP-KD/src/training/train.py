@@ -170,51 +170,9 @@ def train_kd_dr_one_epoch(model, data, epoch, loss, optimizer, scaler, scheduler
     loss_ckd = AverageMeter()
     loss_cross_kd  = AverageMeter()
     loss_fd = AverageMeter()
-    loss_gd = AverageMeter()
-    loss_afd = AverageMeter()
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     end = time.time()
-    # for i, batch in enumerate(dataloader):
-    #     step = num_batches_per_epoch * epoch + i
-        
-    #     if not args.skip_scheduler:
-    #         scheduler(step)
-
-    #     images, texts, t_image_emb, t_text_emb = batch
-
-    #     images = images.to(device=device, dtype=cast_dtype, non_blocking=True)
-    #     texts = texts.to(device=device, non_blocking=True)#shape是[B,3,L]
-    #     t_image_emb = t_image_emb.to(device=device, dtype=cast_dtype, non_blocking=True).detach()#shape是[B,768x2]
-    #     t_text_emb = t_text_emb.to(device=device, non_blocking=True).detach()#shape是[B,3,768x2]
-    #     t_text_emb = t_text_emb.permute(1,0,2)#[3,B,768x2]
-    #     texts = texts.permute(1,0,2)#shape是[3,B,L]
-    #     N,B,L = texts.shape[0], texts.shape[1], texts.shape[2]
-    #     texts = texts.reshape(N*B,L)
-
-    #     data_time_m.update(time.time() - end)
-    #     optimizer.zero_grad()
-    #     with autocast():
-
-    #         image_features, text_features, logit_scale = model(images, texts, distill=True, mask_ratio=args.mask_ratio)
-    #         text_features = text_features.reshape(N,B,-1)
-    #         text_features1, text_features2, text_features3 = text_features.contiguous().chunk(N,dim=0)
-    #         text_features1, text_features2, text_features3 = text_features1.squeeze(), text_features2.squeeze(), text_features3.squeeze()
-
-    #         t_text_emb1, t_text_emb2, t_text_emb3 = t_text_emb.contiguous().chunk(N,dim=0)
-    #         t_text_emb1, t_text_emb2, t_text_emb3 = t_text_emb1.squeeze(), t_text_emb2.squeeze(), t_text_emb3.squeeze()
-
-    #         task_loss1, ckd_loss1, icl_loss1, cross_kd_loss1, fd_loss1 = loss(image_features, text_features1, logit_scale, t_image_emb, t_text_emb1, args.t_logit_scale)
-    #         task_loss2, ckd_loss2, icl_loss2, cross_kd_loss2, fd_loss2 = loss(image_features, text_features2, logit_scale, t_image_emb, t_text_emb2, args.t_logit_scale)
-    #         task_loss3, ckd_loss3, icl_loss3, cross_kd_loss3, fd_loss3 = loss(image_features, text_features3, logit_scale, t_image_emb, t_text_emb3, args.t_logit_scale)
-
-    #         task_loss = task_loss1 + task_loss2 + task_loss3
-    #         ckd_loss = ckd_loss1 + ckd_loss2 + ckd_loss3
-    #         icl_loss = icl_loss1 + icl_loss2 + icl_loss3
-    #         cross_kd_loss = cross_kd_loss1 + cross_kd_loss2 + cross_kd_loss3
-    #         fd_loss = fd_loss1 + fd_loss2 + fd_loss3
-
-    #         total_loss = task_loss + ckd_loss + icl_loss + cross_kd_loss + fd_loss
     for i, batch in enumerate(dataloader):
         step = num_batches_per_epoch * epoch + i
     
@@ -309,8 +267,6 @@ def train_kd_dr_one_epoch(model, data, epoch, loss, optimizer, scaler, scheduler
                 f"CKD Loss: {loss_ckd.val:#.5g} ({loss_ckd.avg:#.4g}) "
                 f"Cross KD Loss: {loss_cross_kd.val:#.5g} ({loss_cross_kd.avg:#.4g}) "
                 f"FD Loss: {loss_fd.val:#.5g} ({loss_fd.avg:#.4g}) "
-                f"GD Loss: {loss_gd.val:#.5g} ({loss_gd.avg:#.4g}) "
-                f"AFD Loss: {loss_afd.val:#.5g} ({loss_afd.avg:#.4g}) "
                 f"Data (t): {data_time_m.avg:.3f} "
                 f"Batch (t): {batch_time_m.avg:.3f}, {args.batch_size*args.world_size / batch_time_m.val:#g}/s "
                 f"LR: {optimizer.param_groups[0]['lr']:5f} "

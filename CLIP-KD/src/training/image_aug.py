@@ -32,6 +32,3 @@ class myRandAugment(RandAugment):
         
         return img
 
-
-random_resized_crop = myRandomResizedCrop(size=(256,256))
-rand_augment = myRandAugment()

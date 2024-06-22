@@ -30,7 +30,7 @@ from open_clip import tokenize
 from open_clip.tokenizer import HFTokenizer
 from .imagenet_zeroshot_data import openai_imagenet_template
 from .class_sampler import MPerClassSampler
-from training.image_aug import random_resized_crop, rand_augment
+from training.image_aug import myRandAugment,myRandomResizedCrop
 import random
 
 class CsvDataset(Dataset):
@@ -441,6 +441,8 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
         ])
 
     def aug_img(image, params):
+        random_resized_crop = myRandomResizedCrop(size=(256,256))
+        rand_augment = myRandAugment()
         image = random_resized_crop(image, params[0])
         return rand_augment(image, params[1])
 

@@ -745,6 +745,9 @@ class DRKDClipLoss(nn.Module):
                 t_logits_per_image_list.append(t_logits_per_image)
                 t_logits_per_text_list.append(t_logits_per_text)
 
+            avg_t_logits_per_image = sum(t_logits_per_image_list)/len(t_logits_per_image_list)
+            avg_t_logits_per_text = sum(t_logits_per_text_list)/len(t_logits_per_text_list)
+
             normalized_image_features = F.normalize(image_features, dim=-1)
             normalized_text_features = F.normalize(text_features, dim=-1)
             normalized_all_image_features = F.normalize(all_image_features, dim=-1)
@@ -777,6 +780,8 @@ class DRKDClipLoss(nn.Module):
                 t_logits_per_text = t_logits_per_image.T
                 t_logits_per_image_list.append(t_logits_per_image)
                 t_logits_per_text_list.append(t_logits_per_text)
+            avg_t_logits_per_image = sum(t_logits_per_image_list)/len(t_logits_per_image_list)
+            avg_t_logits_per_text = sum(t_logits_per_text_list)/len(t_logits_per_text_list)
 
             normalized_image_features = F.normalize(image_features,dim=-1)
             normalized_text_features = F.normalize(text_features,dim=-1)
@@ -816,194 +821,8 @@ class DRKDClipLoss(nn.Module):
             
         logits_per_s_image_to_t_text_list = [self.cross_logit_scale * s_i @ t_t.T for s_i, t_t in zip(proj_image_features, decompose_t_all_text_features)]
         logits_per_s_text_to_t_image_list = [self.cross_logit_scale * s_t @ t_i.T for s_t, t_i in zip(proj_text_features, decompose_t_all_image_features)]
-        
-        task_loss = (
-            F.cross_entropy(logits_per_image, labels) +
-            F.cross_entropy(logits_per_text, labels)
-            ) / 2
-        
-        ckd_loss = torch.tensor(0.).cuda() 
-        icl_loss = torch.tensor(0.).cuda() 
-        cross_kd_loss = torch.tensor(0.).cuda() 
-        
-        icl_loss = sum([(
-            F.cross_entropy(logits_per_s_image_to_t_text, labels) +
-            F.cross_entropy(logits_per_s_text_to_t_image, labels)
-            ) / 2 for logits_per_s_image_to_t_text,logits_per_s_text_to_t_image in zip(logits_per_s_image_to_t_text_list, logits_per_s_text_to_t_image_list)])/2
-        
-        ckd_loss = sum([(self.kl_loss(logits_per_image, t_logits_per_image.detach()) +\
-            self.kl_loss(logits_per_text, t_logits_per_text.detach())) / 2 for t_logits_per_image, t_logits_per_text in zip(t_logits_per_image_list, t_logits_per_text_list)])/2
-        
-        cross_kd_loss = sum([(self.kl_loss(logits_per_s_image_to_t_text, t_logits_per_image.detach()) +\
-            self.kl_loss(logits_per_s_text_to_t_image, t_logits_per_text.detach())) / 2 for logits_per_s_image_to_t_text,t_logits_per_image,logits_per_s_text_to_t_image,t_logits_per_text  in zip(logits_per_s_image_to_t_text_list,t_logits_per_image_list, logits_per_s_text_to_t_image_list,t_logits_per_text_list)])/2
-        #kd_loss = (F.cross_entropy(logits_per_image, F.softmax(, dim=1)) \
-        #    + F.cross_entropy(logits_per_text, F.softmax(t_logits_per_text.detach(), dim=1))) / 2
-
-        ckd_loss = self.args.alpha_ckd_loss * ckd_loss
-        icl_loss = self.args.alpha_icl_loss * icl_loss
-        cross_kd_loss = self.args.alpha_cross_kd_loss * cross_kd_loss
-        fd_loss = self.args.alpha_fd_loss * fd_loss
-        
-        return task_loss, ckd_loss, icl_loss, cross_kd_loss, fd_loss
-
-
-class MultiDRKDClipLoss(nn.Module):
-    def __init__(
-            self,
-            args,
-            local_loss=False,
-            gather_with_grad=False,
-            cache_labels=False,
-            rank=0,
-            world_size=1,
-            use_horovod=False,
-    ):
-        super().__init__()
-        self.local_loss = local_loss
-        self.gather_with_grad = gather_with_grad
-        self.cache_labels = cache_labels
-        self.rank = rank
-        self.world_size = world_size
-        self.use_horovod = use_horovod
-        self.args = args
-
-
-        self.visual_proj = nn.ModuleList([MyOrthogonal(args.s_embed_dim, args.t_embed_dim) for _ in range(2)])
-        self.text_proj = nn.ModuleList([MyOrthogonal(args.s_embed_dim, args.t_embed_dim) for _ in range(2)])
-            
-        # cache state
-        self.prev_num_logits = 0
-        self.kl_loss = DistillKL(T=1)
-        self.cross_logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
-        self.fusion_logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
-        self.labels = {}
-
-    def forward(self, image_features, text_features, logit_scale, \
-        t_image_features, t_text_features, t_logit_scale):
-        """"
-        image_features:[B,D]
-        text_features:[3,B,D]
-        t_image_features:[B,2D]
-        t_text_features:[3,B,2D]
-        """
-        device = image_features.device
-        text_features = list(text_features.chunk(3,dim=0))
-        t_text_features = list(t_text_features.chunk(3,dim=0))
-        for i in range(len(t_text_features)):
-            t_text_features[i] = t_text_features[i].contiguous().squeeze()
-            text_features[i] = text_features[i].contiguous().squeeze()
-
-        if self.world_size > 1:
-            all_text_features_list = []
-            t_all_text_features_list = []
-            all_image_features = gather_image_features(
-                image_features=image_features,
-                local_loss=self.local_loss,
-                gather_with_grad=self.gather_with_grad,
-                rank=self.rank,
-                world_size=self.world_size,
-                use_horovod=self.use_horovod
-            )
-            t_all_image_features = gather_image_features(
-                image_features=t_image_features,
-                local_loss=self.local_loss,
-                gather_with_grad=self.gather_with_grad,
-                rank=self.rank,
-                world_size=self.world_size,
-                use_horovod=self.use_horovod
-            )
-            t_all_image_features = list(t_all_image_features.chunk(2,dim=-1))#[B,768]x2
-            t_all_image_features = [F.normalize(x,dim=-1) for x in t_all_image_features]
-
-            for i in range(3):
-                all_text_features_list.append(gather_text_features(
-                    text_features=text_features[i],
-                    local_loss=self.local_loss,
-                    gather_with_grad=self.gather_with_grad,
-                    rank=self.rank,
-                    world_size=self.world_size,
-                    use_horovod=self.use_horovod
-                ))#[B,D]x3
-                t_all_t_f = gather_text_features(
-                    text_features=t_text_features[i],
-                    local_loss=self.local_loss,
-                    gather_with_grad=self.gather_with_grad,
-                    rank=self.rank,
-                    world_size=self.world_size,
-                    use_horovod=self.use_horovod
-                )#[B,768*2]
-                t_all_t_f = list(t_all_t_f.chunk(2,dim=-1))#[B,768]x2
-                t_all_t_f = [F.normalize(x,dim=-1) for x in t_all_t_f]
-                t_all_text_features_list.append(t_all_t_f)#[[B,768]x2]x3
-            normalized_all_text_features_list = [F.normalize(all_text_features,dim=-1) for all_text_features in all_text_features_list]#[B,D]x3
-
-            t_logits_per_image_list = []
-            t_logits_per_text_list = []
-            for i in range(3):
-                t_pi = []
-                t_pt = []
-                for j in range(2):
-                    t_logits_per_image = t_logit_scale * t_all_image_features[j] @ t_all_text_features_list[i][j].T
-                    t_logits_per_text = t_logits_per_image.T
-                    t_pi.append(t_logits_per_image)
-                    t_pt.append(t_logits_per_text)
-                t_logits_per_image_list.append(t_pi)
-                t_logits_per_text_list.append(t_pt)
-            t_logits_per_image_list = [item for sublist in t_logits_per_image_list for item in sublist]
-            t_logits_per_text_list = [item for sublist in t_logits_per_text_list for item in sublist]
-
-            normalized_image_features = F.normalize(image_features, dim=-1)
-
-            normalized_all_image_features = F.normalize(all_image_features, dim=-1)
-            
-            if self.local_loss:
-                logits_per_image = [logit_scale * normalized_image_features @ f.T for f in normalized_all_text_features_list]
-                logits_per_text = [logit_scale * F.normalize(f,dim=-1) @ normalized_all_image_features.T for f in text_features]
-            else:
-                logits_per_image = [logit_scale * normalized_all_image_features @ f.T for f in normalized_all_text_features_list]
-                logits_per_text = [x.T for x in logits_per_image]
-            logits_per_image = torch.mean(torch.stack(logits_per_image),dim=0)
-            logits_per_text = torch.mean(torch.stack(logits_per_text),dim=0)
-        else:
-            raise ValueError("not implemented single gpu")
-
-        # calculated ground-truth and cache if enabled
-        num_logits = logits_per_image.shape[0]
-        if self.prev_num_logits != num_logits or device not in self.labels:
-            labels = torch.arange(num_logits, device=device, dtype=torch.long)
-            if self.world_size > 1 and self.local_loss:
-                labels = labels + num_logits * self.rank
-            if self.cache_labels:
-                self.labels[device] = labels
-                self.prev_num_logits = num_logits
-        else:
-            labels = self.labels[device]
-
-        proj_image_features = []
-        proj_text_features = []
-        for i in range(2):
-            proj_image_features.append(F.normalize(self.visual_proj[i](all_image_features),dim=-1))
-        for i in range(3):
-            proj_one_text_features = []
-            for j in range(2):
-                proj_one_text_features.append(F.normalize(self.text_proj[j](all_text_features_list[i]),dim=-1))#同一个文本，两个投影空间
-            proj_text_features.append(proj_one_text_features)#[[B,768]x2]x3
-
-        fd_loss_i = sum([F.mse_loss(s_i,t_i) for s_i,t_i in zip(proj_image_features, t_all_image_features)])/len(proj_image_features)
-        fd_loss_t = torch.tensor(0.).cuda()
-        for i in range(3):
-            for j in range(2):
-                fd_loss_t = fd_loss_t + F.mse_loss(proj_text_features[i][j],t_all_text_features_list[i][j])
-        fd_loss_t = fd_loss_t/6
-        fd_loss = fd_loss_t + fd_loss_i
-                                                                                                                                                                                                                                        
-        logits_per_s_image_to_t_text_list = [[self.cross_logit_scale * s_i @ t_t.T for s_i, t_t in zip(proj_image_features, t_all_text_features_list[k])] for k in range(3)]
-        logits_per_s_text_to_t_image_list = [[self.cross_logit_scale * s_t @ t_i.T for s_t, t_i in zip(proj_text_features[k], t_all_image_features)] for k in range(3)]
-        # 对于图像到文本的 logits
-        flat_logits_per_s_image_to_t_text = [item for sublist in logits_per_s_image_to_t_text_list for item in sublist]
-
-        # 对于文本到图像的 logits
-        flat_logits_per_s_text_to_t_image = [item for sublist in logits_per_s_text_to_t_image_list for item in sublist]
+        avg_logits_per_s_image_to_t_text = sum([F.normalize(logit,dim=-1) for logit in logits_per_s_image_to_t_text_list])/len(logits_per_s_image_to_t_text_list)
+        avg_logits_per_s_text_to_t_image = sum([F.normalize(logit,dim=-1) for logit in logits_per_s_text_to_t_image_list])/len(logits_per_s_text_to_t_image_list)
 
         
         task_loss = (
@@ -1015,16 +834,16 @@ class MultiDRKDClipLoss(nn.Module):
         icl_loss = torch.tensor(0.).cuda() 
         cross_kd_loss = torch.tensor(0.).cuda() 
         
-        icl_loss = sum([(
-            F.cross_entropy(logits_per_s_image_to_t_text, labels) +
-            F.cross_entropy(logits_per_s_text_to_t_image, labels)
-            ) / 2 for logits_per_s_image_to_t_text,logits_per_s_text_to_t_image in zip(flat_logits_per_s_image_to_t_text, flat_logits_per_s_text_to_t_image)])
+        icl_loss = (
+            F.cross_entropy(avg_logits_per_s_image_to_t_text, labels) +
+            F.cross_entropy(avg_logits_per_s_text_to_t_image, labels)
+            ) / 2
         
-        ckd_loss = sum([(self.kl_loss(logits_per_image, t_logits_per_image.detach()) +\
-            self.kl_loss(logits_per_text, t_logits_per_text.detach())) / 2 for t_logits_per_image, t_logits_per_text in zip(t_logits_per_image_list, t_logits_per_text_list)])/2
+        ckd_loss = (self.kl_loss(logits_per_image, avg_t_logits_per_image.detach()) +\
+            self.kl_loss(logits_per_text, avg_t_logits_per_text.detach())) / 2
         
-        cross_kd_loss = sum([(self.kl_loss(logits_per_s_image_to_t_text, t_logits_per_image.detach()) +\
-            self.kl_loss(logits_per_s_text_to_t_image, t_logits_per_text.detach())) / 2 for logits_per_s_image_to_t_text,t_logits_per_image,logits_per_s_text_to_t_image,t_logits_per_text in zip(flat_logits_per_s_image_to_t_text,t_logits_per_image_list, flat_logits_per_s_text_to_t_image,t_logits_per_text_list)])/2
+        cross_kd_loss = (self.kl_loss(avg_logits_per_s_image_to_t_text, avg_t_logits_per_image.detach()) +\
+            self.kl_loss(avg_logits_per_s_text_to_t_image, avg_t_logits_per_text.detach())) / 2
         #kd_loss = (F.cross_entropy(logits_per_image, F.softmax(, dim=1)) \
         #    + F.cross_entropy(logits_per_text, F.softmax(t_logits_per_text.detach(), dim=1))) / 2
 

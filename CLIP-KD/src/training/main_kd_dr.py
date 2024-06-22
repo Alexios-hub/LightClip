@@ -37,7 +37,7 @@ from open_clip.model import CLIPVisionCfg,CLIPTextCfg
 from open_clip import AppleMobileCLIP
 from mobileclip.modules.common.transformer import ParallelTransformerEncoder
 from mobileclip.models.mci import ParallelAttentionBlock
-from open_clip import DRKDClipLoss, MultiDRKDClipLoss
+from open_clip import DRKDClipLoss
 
 apple_mobile_clip_models = ["mobileclip_s0","mobileclip_s1","mobileclip_s2","mobileclip_b","mobileclip_blt"]
 
