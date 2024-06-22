@@ -7,6 +7,7 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torch.distributed as dist
 
 try:
     import wandb
@@ -194,7 +195,6 @@ def train_kd_dr_one_epoch(model, data, epoch, loss, optimizer, scaler, scheduler
         optimizer.zero_grad()
         with autocast():
             image_features, text_features, logit_scale = model(images, texts, distill=True, mask_ratio=args.mask_ratio)
-        
             # Reshape and split text_features for processing
             text_features = text_features.view(-1, B, text_features.size(-1)).chunk(3, dim=0)
             text_features = tuple(x.squeeze() for x in text_features)
@@ -202,10 +202,8 @@ def train_kd_dr_one_epoch(model, data, epoch, loss, optimizer, scaler, scheduler
             # Chunk and prepare teacher embeddings
             t_text_emb = t_text_emb.chunk(3, dim=0)
             t_text_emb = tuple(x.squeeze() for x in t_text_emb)
-
             # Compute losses for each text feature set
             losses = [loss(image_features, tf, logit_scale, t_image_emb, tte, args.t_logit_scale) for tf, tte in zip(text_features, t_text_emb)]
-        
             # Sum individual losses
             task_loss, ckd_loss, icl_loss, cross_kd_loss, fd_loss = map(sum, zip(*losses))
             task_loss = task_loss/3
@@ -218,7 +216,12 @@ def train_kd_dr_one_epoch(model, data, epoch, loss, optimizer, scaler, scheduler
         # Backpropagation would go here
 
         if scaler is not None:
+
+            dist.barrier()
+            # print(f'beigin1:{args.device}')
             scaler.scale(total_loss).backward()
+            # print(f'beigin2:{args.device}')
+
             if args.horovod:
                 optimizer.synchronize()
                 scaler.unscale_(optimizer)

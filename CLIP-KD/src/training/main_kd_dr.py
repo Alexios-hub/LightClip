@@ -336,8 +336,8 @@ def main(args):
                 model.load_state_dict(sd)
                 #if optimizer is not None:
                 #    optimizer.load_state_dict(checkpoint["optimizer"])
-                if scaler is not None and 'scaler' in checkpoint:
-                    scaler.load_state_dict(checkpoint['scaler'])
+                # if scaler is not None and 'scaler' in checkpoint:
+                #     scaler.load_state_dict(checkpoint['scaler'])
                 logging.info(f"=> resuming checkpoint '{args.resume}' (epoch {start_epoch})")
             else:
                 # loading a bare (model only) checkpoint for fine-tune or evaluation

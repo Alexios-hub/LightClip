@@ -467,8 +467,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
         #Preprocess embeddings
         image_emb = sample["pth"]["image_emb"][aug_idx]
         text_emb = torch.stack([sample["pth"]["text_emb"][i] for i in text_indices])
-        if not isinstance(image_emb, torch.Tensor):
-            image_emb = torch.tensor(image_emb)
+
         image_emb = image_emb.type(torch.float32)
         text_emb = text_emb.type(torch.float32)
 
