@@ -232,6 +232,16 @@ def main(args):
             for param in model.transformer.transformer[4].parameters():
                 param.requires_grad = True
 
+            #for resuming
+            if is_master(args):
+                logging.info("unfreeze proj module of image encoder and txt encoder.")
+            for param in model.visual.model.conv_exp.parameters():
+                param.requires_grad = True
+            for param in model.visual.model.head.parameters():
+                param.requires_grad = True
+            for param in model.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
+                param.requires_grad = True
+
 
     if args.trace:
         model = trace_model(model, batch_size=args.batch_size, device=device)
@@ -334,10 +344,10 @@ def main(args):
                 if not args.distributed and next(iter(sd.items()))[0].startswith('module'):
                     sd = {k[len('module.'):]: v for k, v in sd.items()}
                 model.load_state_dict(sd)
-                #if optimizer is not None:
+                # if optimizer is not None:
                 #    optimizer.load_state_dict(checkpoint["optimizer"])
-                # if scaler is not None and 'scaler' in checkpoint:
-                #     scaler.load_state_dict(checkpoint['scaler'])
+                if scaler is not None and 'scaler' in checkpoint:
+                    scaler.load_state_dict(checkpoint['scaler'])
                 logging.info(f"=> resuming checkpoint '{args.resume}' (epoch {start_epoch})")
             else:
                 # loading a bare (model only) checkpoint for fine-tune or evaluation

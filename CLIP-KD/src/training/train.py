@@ -7,7 +7,6 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torch.distributed as dist
 
 try:
     import wandb
@@ -217,9 +216,14 @@ def train_kd_dr_one_epoch(model, data, epoch, loss, optimizer, scaler, scheduler
 
         if scaler is not None:
 
-            dist.barrier()
             # print(f'beigin1:{args.device}')
-            scaler.scale(total_loss).backward()
+            # scaler.scale(total_loss).backward()
+            print(f'1:{args.device}')
+            scaled_loss = scaler.scale(total_loss)  # 首先缩放损失值
+            print(f'2:{args.device}')
+            scaled_loss.backward()                 # 然后对缩放后的损失执行反向传播
+            print(f'3:{args.device}')
+
             # print(f'beigin2:{args.device}')
 
             if args.horovod:
