@@ -164,6 +164,73 @@ class ShapedMHSA(nn.Module):
         qkv_bias: bool = False,
         attn_drop: float = 0.0,
         proj_drop: float = 0.0,
+    ) -> None:
+        """Build Shaped MHSA module that can handle 3D or 4D input tensors.
+
+        Args:
+            dim: Number of embedding dimensions.
+            head_dim: Number of hidden dimensions per head. Default: ``32``
+            qkv_bias: Use bias or not. Default: ``False``
+            attn_drop: Dropout rate for attention tensor.
+            proj_drop: Dropout rate for projection tensor.
+        """
+        super().__init__()
+        assert dim % head_dim == 0, "dim should be divisible by head_dim"
+        self.head_dim = head_dim
+        self.num_heads = dim // head_dim
+        self.scale = head_dim**-0.5
+
+        self.qk = nn.Linear(dim, dim * 2, bias=qkv_bias)
+        
+        # Initialize q weights to 0
+        self.qk.weight.data[:dim, :] = 0
+        self.attn_drop = nn.Dropout(attn_drop)
+
+        self.alpha = nn.Parameter(torch.ones((1, self.num_heads, 1, 1)))
+        self.beta = nn.Parameter(torch.zeros((1, self.num_heads, 1, 1)))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        shape = x.shape
+        B, C, H, W = shape
+        N = H * W
+        if len(shape) == 4:
+            x = torch.flatten(x, start_dim=2).transpose(-2, -1)  # (B, N, C)
+        qk = (
+            self.qk(x)
+            .reshape(B, N, 2, self.num_heads, self.head_dim)
+            .permute(2, 0, 3, 1, 4)
+        )
+        q, k = qk.unbind(0)  # make torchscript happy (cannot use tensor as tuple)
+        v = x.reshape(B, N, 1, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4).squeeze()
+
+        # trick here to make q@k.t more stable
+        attn = (q * self.scale) @ k.transpose(-2, -1)
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
+
+        it = torch.eye(N).to(v.device)
+        attn = self.alpha * it + self.beta * attn
+
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+
+        if len(shape) == 4:
+            x = x.transpose(-2, -1).reshape(B, C, H, W)
+
+        return x
+class ShapedMHSA(nn.Module):
+    """Shaped Multi-headed Self Attention module.
+
+    Source modified from:
+    https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        head_dim: int = 32,
+        qkv_bias: bool = False,
+        attn_drop: float = 0.0,
+        proj_drop: float = 0.0,
         n_c:int = 8*8
     ) -> None:
         """Build Shaped MHSA module that can handle 3D or 4D input tensors.
