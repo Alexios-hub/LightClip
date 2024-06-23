@@ -47,7 +47,7 @@ def random_seed(seed=42, rank=0):
     np.random.seed(seed + rank)
     random.seed(seed + rank)
 
-def create_apple_mobile_clip_model(device,mobile_model_name = "mobileclip_s0",pretrained='/home/user/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt'):
+def create_apple_mobile_clip_model(device,mobile_model_name = "mobileclip_s0",pretrained='/home/alex/data/LightClip/ml-mobileclip/checkpoints/mobileclip_s0.pt'):
     mobile_model, _, _ = mobileclip.create_model_and_transforms(mobile_model_name, pretrained=pretrained)#this preprocess lack convert RGB function
     preprocess = transforms.Compose([
                 transforms.Resize(size=256, interpolation=transforms.InterpolationMode.BICUBIC),
@@ -177,7 +177,7 @@ def main(args):
     if args.model in apple_mobile_clip_models:
         model, preprocess_train, preprocess_val = create_apple_mobile_clip_model(device=device,
                                                                                  mobile_model_name=args.model,
-                                                                                 pretrained=f'/home/user/data/LightClip/ml-mobileclip/checkpoints/{args.model}.pt')
+                                                                                 pretrained=f'/home/alex/data/LightClip/ml-mobileclip/checkpoints/{args.model}.pt')
         args.s_embed_dim = 512
     else:
         model, preprocess_train, preprocess_val = create_model_and_transforms(args.model,
@@ -203,15 +203,15 @@ def main(args):
             model.visual.model.network[7][1].token_mixer = model.visual.model.network[7][0].token_mixer
             # analyze_model_components(model.visual.model.network)
 
-            model.transformer.transformer[1] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            model.transformer.transformer[2] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            model.transformer.transformer[3] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            model.transformer.transformer[4] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
-            #weight sharing
-            del model.transformer.transformer[2].pre_norm_mha
-            model.transformer.transformer[2].pre_norm_mha = model.transformer.transformer[1].pre_norm_mha
-            del model.transformer.transformer[4].pre_norm_mha
-            model.transformer.transformer[4].pre_norm_mha = model.transformer.transformer[3].pre_norm_mha
+            # model.transformer.transformer[1] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            # model.transformer.transformer[2] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            # model.transformer.transformer[3] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            # model.transformer.transformer[4] = ParallelTransformerEncoder(embed_dim=512,ffn_latent_dim=2048,dropout=0.0,ffn_dropout=0.0,stochastic_dropout=0.0).to(device)
+            # #weight sharing
+            # del model.transformer.transformer[2].pre_norm_mha
+            # model.transformer.transformer[2].pre_norm_mha = model.transformer.transformer[1].pre_norm_mha
+            # del model.transformer.transformer[4].pre_norm_mha
+            # model.transformer.transformer[4].pre_norm_mha = model.transformer.transformer[3].pre_norm_mha
 
             # Freeze all parameters
             for param in model.parameters():
@@ -223,14 +223,20 @@ def main(args):
             for param in model.visual.model.network[7][1].parameters():
                 param.requires_grad = True
 
-            for param in model.transformer.transformer[1].parameters():
-                param.requires_grad = True
-            for param in model.transformer.transformer[2].parameters():
-                param.requires_grad = True
-            for param in model.transformer.transformer[3].parameters():
-                param.requires_grad = True
-            for param in model.transformer.transformer[4].parameters():
-                param.requires_grad = True
+            #modify for resuming visual encoding 
+            # for param in model.visual.model.conv_exp.parameters():
+            #     param.requires_grad = True
+            # for param in model.visual.model.head.parameters():
+            #     param.requires_grad = True
+
+            # for param in model.transformer.transformer[1].parameters():
+            #     param.requires_grad = True
+            # for param in model.transformer.transformer[2].parameters():
+            #     param.requires_grad = True
+            # for param in model.transformer.transformer[3].parameters():
+            #     param.requires_grad = True
+            # for param in model.transformer.transformer[4].parameters():
+            #     param.requires_grad = True
 
 
     if args.trace:
@@ -334,8 +340,8 @@ def main(args):
                 if not args.distributed and next(iter(sd.items()))[0].startswith('module'):
                     sd = {k[len('module.'):]: v for k, v in sd.items()}
                 model.load_state_dict(sd)
-                #if optimizer is not None:
-                #    optimizer.load_state_dict(checkpoint["optimizer"])
+                if optimizer is not None:
+                   optimizer.load_state_dict(checkpoint["optimizer"])
                 if scaler is not None and 'scaler' in checkpoint:
                     scaler.load_state_dict(checkpoint['scaler'])
                 logging.info(f"=> resuming checkpoint '{args.resume}' (epoch {start_epoch})")
@@ -406,8 +412,9 @@ def main(args):
                 param.requires_grad = True
             for param in model.module.visual.model.head.parameters():
                 param.requires_grad = True
-            for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
-                param.requires_grad = True
+
+            # for param in model.module.transformer.transformer[5].parameters():#unfreeze modules top of transformer encoder at epoch 5
+            #     param.requires_grad = True
 
         train_kd_dr_one_epoch(model, data, epoch, loss, optimizer, scaler, scheduler, args, tb_writer=None)
         completed_epoch = epoch + 1
